@@ -52,11 +52,16 @@ async def normalize(
     tenant_id: str,
     doc_version: str,
     existing_chunks: list[dict[str, Any]] | None = None,
-    auto_approve_threshold: float = 0.85,
+    auto_approve_threshold: float | None = None,
 ) -> list[NormalizedChunk]:
     from backend.src.config import settings
 
-    threshold = auto_approve_threshold or settings.confidence_auto_approve_threshold
+    # NOTE: `auto_approve_threshold or settings...` looks like a sane default
+    # fallback but isn't one — a non-None default parameter is always truthy,
+    # so `or` never actually falls through to settings, silently making
+    # CONFIDENCE_AUTO_APPROVE_THRESHOLD unconfigurable via .env. Only fall
+    # back when the caller genuinely passed nothing.
+    threshold = auto_approve_threshold if auto_approve_threshold is not None else settings.confidence_auto_approve_threshold
 
     # Classify all blocks in one async batch
     classifications = await classify_blocks(doc.blocks, tenant_id=tenant_id)
