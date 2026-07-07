@@ -23,6 +23,8 @@ export function PlannerReview() {
   const [generating, setGenerating] = useState(false);
   const [featureArea, setFeatureArea] = useState("");
   const [docVersion, setDocVersion] = useState("1.0");
+  const [coverageGaps, setCoverageGaps] = useState<string[]>([]);
+  const [clarificationFlags, setClarificationFlags] = useState<string[]>([]);
 
   const { data: cards = [], isLoading } = useQuery<TestCard[]>({
     queryKey: ["test-cards", TENANT_ID, "pending"],
@@ -35,10 +37,12 @@ export function PlannerReview() {
   const generatePlan = async () => {
     setGenerating(true);
     try {
-      await axios.post(`${API}/plans/${TENANT_ID}/generate`, {
+      const { data } = await axios.post(`${API}/plans/${TENANT_ID}/generate`, {
         feature_area: featureArea,
         doc_version: docVersion,
       });
+      setCoverageGaps(data.coverage_gaps ?? []);
+      setClarificationFlags(data.clarification_flags ?? []);
       qc.invalidateQueries({ queryKey: ["test-cards"] });
     } finally {
       setGenerating(false);
@@ -99,6 +103,32 @@ export function PlannerReview() {
           </button>
         </div>
       </div>
+
+      {/* Clarification flags and coverage gaps from the last generation */}
+      {clarificationFlags.length > 0 && (
+        <div className="border border-amber-300 bg-amber-50 rounded-lg p-4 mb-4">
+          <h2 className="text-sm font-semibold text-amber-900 mb-2">
+            Needs clarification ({clarificationFlags.length})
+          </h2>
+          <ul className="list-disc list-inside space-y-1 text-sm text-amber-900">
+            {clarificationFlags.map((flag, i) => (
+              <li key={i}>{flag}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {coverageGaps.length > 0 && (
+        <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 mb-4">
+          <h2 className="text-sm font-semibold text-blue-900 mb-2">
+            Coverage gaps ({coverageGaps.length})
+          </h2>
+          <ul className="list-disc list-inside space-y-1 text-sm text-blue-900">
+            {coverageGaps.map((gap, i) => (
+              <li key={i}>{gap}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Bulk approve */}
       {cards.length > 0 && (

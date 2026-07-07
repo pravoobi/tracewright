@@ -121,7 +121,18 @@ async def persist_plan(
     plan: dict[str, Any],
 ) -> list[str]:
     """Save approved-or-pending test cards to DB. Returns list of test_card IDs."""
+    from sqlalchemy import select
     from backend.src.db.models import TestCard, TraceabilityLink
+
+    # The Planner LLM numbers cards sequentially (TC-001, TC-002, ...) with no
+    # awareness of IDs used by a PREVIOUS generation run for this tenant —
+    # test_id has a unique DB constraint, so a second call for a similar
+    # feature area reliably regenerates "TC-001" and crashes the whole
+    # request with an uncaught IntegrityError. Disambiguate proactively.
+    existing = await session.execute(
+        select(TestCard.test_id).where(TestCard.tenant_id == uuid.UUID(tenant_id))
+    )
+    used_ids = set(existing.scalars().all())
 
     card_ids: list[str] = []
     for card in plan["test_cards"]:
@@ -130,9 +141,18 @@ async def persist_plan(
         else:
             approval_status = "pending"
 
+        test_id = card["test_id"]
+        if test_id in used_ids:
+            base, suffix = test_id, 2
+            while test_id in used_ids:
+                test_id = f"{base}-{suffix}"
+                suffix += 1
+            log.warning("planner.test_id_collision", original=base, reassigned=test_id)
+        used_ids.add(test_id)
+
         tc = TestCard(
             tenant_id=uuid.UUID(tenant_id),
-            test_id=card["test_id"],
+            test_id=test_id,
             title=card["title"],
             description=card["description"],
             preconditions=card.get("preconditions"),
