@@ -34,6 +34,19 @@ Respond with JSON only:
 {"type": "<category>", "confidence": <0.0-1.0>, "example_of": "<brief description of rule if type=example, else null>"}"""
 
 
+def _extract_json_object(raw: str) -> dict:
+    """Parse the first JSON object in `raw`, tolerating a markdown fence and/or
+    trailing prose after it (e.g. the model adding an explanation sentence
+    after the closing ```). A plain removesuffix("```") only handles a fence
+    that's the literal last thing in the string — it does nothing once there's
+    text after it, so json.loads then fails with "Extra data"."""
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        cleaned = cleaned[first_newline + 1:] if first_newline != -1 else cleaned.lstrip("`")
+    return json.JSONDecoder().raw_decode(cleaned.strip())[0]
+
+
 async def classify_block(block: Block, tenant_id: str | None = None) -> tuple[str, float, str | None]:
     """Returns (chunk_type, confidence, example_of)."""
     prompt = f"Block type hint: {block.block_type}\n\nText:\n{block.content[:2000]}"
@@ -49,7 +62,7 @@ async def classify_block(block: Block, tenant_id: str | None = None) -> tuple[st
             system=_SYSTEM_PROMPT,
             max_tokens=128,
         )
-        parsed = json.loads(raw)
+        parsed = _extract_json_object(raw)
         chunk_type = parsed.get("type", "unknown")
         if chunk_type not in VALID_TYPES:
             chunk_type = "unknown"

@@ -1,6 +1,7 @@
 [
   {
     "id": "golden-001",
+    "source_doc": "checkout",
     "hint_block_type": "paragraph",
     "content": "The system shall allow authenticated users to apply a discount code at checkout. The discount shall reduce the order total by the percentage specified in the discount record.",
     "expected_type": "acceptance_criterion",
@@ -8,6 +9,7 @@
   },
   {
     "id": "golden-002",
+    "source_doc": "checkout",
     "hint_block_type": "paragraph",
     "content": "A discount code may not be applied to orders with a total below $10.00.",
     "expected_type": "business_rule",
@@ -15,6 +17,7 @@
   },
   {
     "id": "golden-003",
+    "source_doc": "checkout",
     "hint_block_type": "paragraph",
     "content": "Discount code: A string of 6–12 alphanumeric characters issued by the marketing team to reduce order price.",
     "expected_type": "glossary_term",
@@ -22,16 +25,378 @@
   },
   {
     "id": "golden-004",
+    "source_doc": "checkout",
     "hint_block_type": "paragraph",
-    "content": "Document revision history: v1.0 (2025-01-10, initial draft), v1.1 (2025-03-05, added section 4).",
+    "content": "Document revision history: v1.0 (2025-01-10, initial draft), v1.1 (2025-03-05, added section 4), v1.2 (2025-04-02, added cart limits, shipping & tax, and stakeholders sections).",
     "expected_type": "out_of_scope",
     "page_number": 1
   },
   {
     "id": "golden-005",
+    "source_doc": "checkout",
     "hint_block_type": "paragraph",
     "content": "For example, if the user has a 20% discount code and their cart totals $50, the discount reduces the total to $40.",
     "expected_type": "example",
     "page_number": 4
+  },
+  {
+    "id": "golden-006",
+    "source_doc": "checkout",
+    "hint_block_type": "heading",
+    "content": "Checkout Service — Requirements Specification",
+    "expected_type": "metadata",
+    "page_number": 1
+  },
+  {
+    "id": "golden-007",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Document owner: Commerce Platform Team. Classification: Internal.",
+    "expected_type": "out_of_scope",
+    "page_number": 1
+  },
+  {
+    "id": "golden-008",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Order total: The sum of all line-item prices in a customer's cart, prior to tax and shipping, expressed in USD.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-009",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Cart: A collection of one or more line items a customer intends to purchase, persisted per user session.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-010",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "SKU: Stock Keeping Unit — a unique alphanumeric identifier for a purchasable product variant.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-011",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Tax rate: The percentage of an order's subtotal charged as sales tax, determined by the shipping destination's jurisdiction.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-012",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "This document describes the requirements for the checkout service's discount code feature. It covers eligibility, application rules, and the acceptance criteria that govern discount behavior at checkout.",
+    "expected_type": "out_of_scope",
+    "page_number": 3
+  },
+  {
+    "id": "golden-013",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "A discount code may only be applied once per order.",
+    "expected_type": "business_rule",
+    "page_number": 4
+  },
+  {
+    "id": "golden-014",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall display the applied discount code and percentage on the checkout summary before order confirmation.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4
+  },
+  {
+    "id": "golden-015",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall prevent checkout when the cart contains zero items.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5
+  },
+  {
+    "id": "golden-016",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "A single order may contain a maximum of 20 distinct line items.",
+    "expected_type": "business_rule",
+    "page_number": 5
+  },
+  {
+    "id": "golden-017",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The quantity of any single SKU in a cart shall not exceed 99 units.",
+    "expected_type": "business_rule",
+    "page_number": 5
+  },
+  {
+    "id": "golden-018",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "For example, if a customer attempts to add a 100th unit of the same SKU, the system rejects the addition and displays a quantity-limit error.",
+    "expected_type": "example",
+    "page_number": 5
+  },
+  {
+    "id": "golden-019",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall calculate sales tax based on the shipping address's jurisdiction tax rate at the time of checkout.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 6
+  },
+  {
+    "id": "golden-020",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Orders shipped to addresses outside the United States are not eligible for standard shipping and shall default to international shipping rates.",
+    "expected_type": "business_rule",
+    "page_number": 6
+  },
+  {
+    "id": "golden-021",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "For example, an order with an $80.00 subtotal shipped to a jurisdiction with a 7.5% tax rate incurs $6.00 in sales tax, for an order total of $86.00.",
+    "expected_type": "example",
+    "page_number": 6
+  },
+  {
+    "id": "golden-022",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Stakeholders: Jane Doe (Product Owner, Commerce Platform), Raj Patel (Engineering Lead), Priya Nair (QA Lead). Approval status: Approved by Commerce Platform Steering Committee on 2025-03-10.",
+    "expected_type": "out_of_scope",
+    "page_number": 7
+  },
+  {
+    "id": "golden-023",
+    "source_doc": "auth",
+    "hint_block_type": "heading",
+    "content": "User Account & Authentication — Requirements Specification",
+    "expected_type": "metadata",
+    "page_number": 1
+  },
+  {
+    "id": "golden-024",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Document owner: Identity & Access Team. Classification: Confidential.",
+    "expected_type": "out_of_scope",
+    "page_number": 1
+  },
+  {
+    "id": "golden-025",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Document revision history: v1.0 (2024-11-02, initial draft), v2.0 (2025-02-18, added multi-factor authentication requirements).",
+    "expected_type": "out_of_scope",
+    "page_number": 1
+  },
+  {
+    "id": "golden-026",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Session token: An opaque, server-issued credential that authenticates a user's browser session after successful login.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-027",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Multi-factor authentication (MFA): A login process requiring two or more independent verification factors.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-028",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Account lockout: A temporary suspension of login capability for an account, triggered by repeated failed authentication attempts.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-029",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Password reset token: A single-use, time-limited credential issued to verify a user's identity during a password reset flow.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-030",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "This document describes requirements for user account authentication, including login, multi-factor authentication, account lockout, and password reset flows.",
+    "expected_type": "out_of_scope",
+    "page_number": 3
+  },
+  {
+    "id": "golden-031",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall lock a user account after 5 consecutive failed login attempts within a 15-minute window.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4
+  },
+  {
+    "id": "golden-032",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "An account lockout shall persist for a minimum of 30 minutes before the user may attempt to log in again.",
+    "expected_type": "business_rule",
+    "page_number": 4
+  },
+  {
+    "id": "golden-033",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall notify a user by email when their account is locked due to failed login attempts.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4
+  },
+  {
+    "id": "golden-034",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Failed login attempts shall reset to zero after a successful login.",
+    "expected_type": "business_rule",
+    "page_number": 4
+  },
+  {
+    "id": "golden-035",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "For example, if a user enters an incorrect password 5 times between 2:00pm and 2:10pm, the account is locked until at least 2:40pm.",
+    "expected_type": "example",
+    "page_number": 4
+  },
+  {
+    "id": "golden-036",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall require multi-factor authentication for accounts with administrator privileges.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5
+  },
+  {
+    "id": "golden-037",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "MFA codes delivered via SMS shall expire 5 minutes after issuance.",
+    "expected_type": "business_rule",
+    "page_number": 5
+  },
+  {
+    "id": "golden-038",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall allow users to register at least one authenticator app as an MFA method.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5
+  },
+  {
+    "id": "golden-039",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "MFA cannot be disabled on accounts with administrator privileges.",
+    "expected_type": "business_rule",
+    "page_number": 5
+  },
+  {
+    "id": "golden-040",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "For example, an administrator logging in receives a 6-digit MFA code by SMS that must be entered within 5 minutes or a new code must be requested.",
+    "expected_type": "example",
+    "page_number": 5
+  },
+  {
+    "id": "golden-041",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall allow a user to request a password reset link via their registered email address.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 6
+  },
+  {
+    "id": "golden-042",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Password reset links shall expire 1 hour after issuance.",
+    "expected_type": "business_rule",
+    "page_number": 6
+  },
+  {
+    "id": "golden-043",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Password reset links are single-use: once a link has been used to reset a password, it is no longer valid for any subsequent request.",
+    "expected_type": "business_rule",
+    "page_number": 6
+  },
+  {
+    "id": "golden-044",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall require a new password to differ from the user's previous 5 passwords.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 6
+  },
+  {
+    "id": "golden-045",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "For example, if a user requests a password reset at 9:00am, the reset link becomes invalid at 10:00am even if unused.",
+    "expected_type": "example",
+    "page_number": 6
+  },
+  {
+    "id": "golden-046",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall expire a user's session token after 30 minutes of inactivity.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 7
+  },
+  {
+    "id": "golden-047",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Session tokens are not valid after the user has logged out; a logged-out session token cannot be used to authenticate any further request.",
+    "expected_type": "business_rule",
+    "page_number": 7
+  },
+  {
+    "id": "golden-048",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Idle timeout: The duration of user inactivity after which a session is automatically terminated.",
+    "expected_type": "glossary_term",
+    "page_number": 7
+  },
+  {
+    "id": "golden-049",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall allow a user to view and revoke active sessions from their account settings.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 7
+  },
+  {
+    "id": "golden-050",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Stakeholders: Alex Kim (Security Lead), Morgan Lee (Product Owner, Identity & Access), Sam Torres (QA Lead). Approval status: Approved by the Security Review Board on 2025-02-20.",
+    "expected_type": "out_of_scope",
+    "page_number": 8
   }
 ]
