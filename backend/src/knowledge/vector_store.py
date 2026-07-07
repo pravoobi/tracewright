@@ -1,6 +1,7 @@
 """Hybrid search: pgvector cosine similarity + Postgres tsvector keyword matching."""
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import structlog
@@ -41,18 +42,26 @@ async def hybrid_search(
         type_filter = "AND chunk_type = ANY(:chunk_types)"
         params["chunk_types"] = chunk_types
 
+    # NOTE: bind tenant_id as a real uuid.UUID and use CAST(... AS vector) rather
+    # than the ":name::type" shorthand — SQLAlchemy's text() bind-parameter
+    # parser collides with Postgres's "::" cast operator when it directly
+    # follows a ":name" parameter (no space), silently leaving the cast as
+    # literal, un-substituted text that then fails at the database layer.
+    # Same root cause as the embed.py fix.
+    params["tenant_id"] = uuid.UUID(tenant_id)
+
     sql = text(f"""
         WITH vector_results AS (
             SELECT id, logical_id, chunk_type, content, display_ref, section_path,
                    page_number, confidence, review_status, metadata,
-                   1 - (embedding <=> :query_embedding::vector) AS vector_score,
-                   ROW_NUMBER() OVER (ORDER BY embedding <=> :query_embedding::vector) AS vector_rank
+                   1 - (embedding <=> CAST(:query_embedding AS vector)) AS vector_score,
+                   ROW_NUMBER() OVER (ORDER BY embedding <=> CAST(:query_embedding AS vector)) AS vector_rank
             FROM chunks
-            WHERE tenant_id = :tenant_id::uuid
+            WHERE tenant_id = :tenant_id
               AND review_status IN ('auto_approved', 'approved')
               AND embedding IS NOT NULL
               {type_filter}
-            ORDER BY embedding <=> :query_embedding::vector
+            ORDER BY embedding <=> CAST(:query_embedding AS vector)
             LIMIT :limit
         ),
         keyword_results AS (
@@ -63,7 +72,7 @@ async def hybrid_search(
                      ORDER BY ts_rank(tsv, plainto_tsquery('english', :tsquery)) DESC
                    ) AS keyword_rank
             FROM chunks
-            WHERE tenant_id = :tenant_id::uuid
+            WHERE tenant_id = :tenant_id
               AND review_status IN ('auto_approved', 'approved')
               AND tsv @@ plainto_tsquery('english', :tsquery)
               {type_filter}

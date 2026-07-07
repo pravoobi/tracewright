@@ -50,7 +50,12 @@ async def generate_test_plan(
         tenant_id=tenant_id,
         feature="planner",
         system=_SYSTEM_PROMPT,
-        max_tokens=4096,
+        # 4096 was too small in practice: generating one detailed test card
+        # (title, description, preconditions, setup_manifest) per retrieved
+        # AC/business_rule chunk exceeds it once top_k retrieves more than a
+        # handful of chunks, truncating the JSON mid-object and silently
+        # producing zero test cards (caught, but only after burning the call).
+        max_tokens=16384,
     )
 
     plan = _parse_plan(raw, doc_version)
@@ -94,9 +99,17 @@ def _build_prompt(feature_area: str, doc_version: str, context: dict[str, Any]) 
 
 def _parse_plan(raw: str, doc_version: str) -> dict[str, Any]:
     try:
-        # Strip markdown code fences if LLM wrapped the JSON
-        stripped = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        plan = json.loads(stripped)
+        # A plain removesuffix("```") only strips a fence that's the literal
+        # last thing in the string — it silently does nothing once the model
+        # adds trailing content after it, leaving json.loads to fail with
+        # "Extra data". Strip a leading fence, then parse only the first JSON
+        # value and ignore anything trailing (same fix as classify.py's
+        # _extract_json_object / healer.py).
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            first_newline = cleaned.find("\n")
+            cleaned = cleaned[first_newline + 1:] if first_newline != -1 else cleaned.lstrip("`")
+        plan = json.JSONDecoder().raw_decode(cleaned.strip())[0]
     except json.JSONDecodeError:
         log.error("planner.json_parse_failed", raw_preview=raw[:200])
         plan = {"test_cards": [], "coverage_gaps": [], "clarification_flags": []}

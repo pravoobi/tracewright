@@ -19,8 +19,18 @@ Given a test card, page-object registry, and fixture context, generate a complet
 
 Rules:
 - Use ONLY locators from the provided page-object registry — never invent locators.
+- Each page object in the registry has a `url_pattern: string` property holding its URL.
+  To navigate to a page, use exactly `await page.goto(pageObject.url_pattern)`. Do NOT
+  invent a different property name (e.g. `.url`) — it does not exist on the page-object
+  classes and will fail to compile.
 - Follow Page Object Model (POM) pattern.
 - Import from the shared page-objects directory.
+- If the test card's preconditions require an authenticated user (most do), import
+  `test` and `expect` from `../fixtures/authenticated-cart.fixture` — NOT from
+  `@playwright/test` directly. That fixture overrides Playwright's `storageState`
+  option with a pre-captured logged-in session; importing from `@playwright/test`
+  instead runs the test unauthenticated and every request redirects to the login
+  page, causing every subsequent locator wait to time out.
 - Each test file starts with metadata comments linking to the test card ID and source artifacts.
 - Use TypeScript with strict types.
 - Use async/await throughout.

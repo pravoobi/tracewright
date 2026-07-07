@@ -5,16 +5,19 @@
       "discountCodeInput": "page.getByRole(\"textbox\", { name: \"Discount code\" })",
       "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
       "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
-      "orderTotal": "page.locator(\"#order-total\")"
+      "orderTotal": "page.locator(\"#order-total\")",
+      "discountSummary": "page.locator(\"dt:has-text(\\\"Discount\\\")\")"
     },
     "locator_strategies": {
       "discountCodeInput": "role",
       "applyDiscountButton": "role",
       "proceedToCheckoutButton": "role",
-      "orderTotal": "css_warned"
+      "orderTotal": "css_warned",
+      "discountSummary": "css_warned"
     },
     "warnings": [
-      "CSS locator used for 'cart order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
+      "CSS locator used for 'cart order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute.",
+      "CSS locator used for 'discount code and percentage summary line' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
     ]
   },
   "CheckoutPage": {

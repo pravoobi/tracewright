@@ -1,6 +1,8 @@
 """Stage 6: Embed chunks at multiple granularities and write to pgvector + tsvector."""
 from __future__ import annotations
 
+import uuid
+
 import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,21 +48,26 @@ async def embed_and_store_chunks(
         chunk.embedding = embedding
 
         # tsvector for keyword side of hybrid search
+        # NOTE: bind tenant_id/artifact_id as real uuid.UUID objects rather than
+        # casting strings with "::uuid" — SQLAlchemy's text() bind-parameter
+        # parser collides with Postgres's "::" cast operator when it directly
+        # follows a ":name" parameter (no space), producing a stray ":" that
+        # asyncpg then fails to parse as a syntax error.
         await session.execute(
             text("""
                 UPDATE chunks
                 SET tsv = to_tsvector('english', :content),
                     embedding = :embedding
                 WHERE logical_id = :logical_id
-                  AND tenant_id = :tenant_id::uuid
-                  AND artifact_id = :artifact_id::uuid
+                  AND tenant_id = :tenant_id
+                  AND artifact_id = :artifact_id
             """),
             {
                 "content": chunk.content,
                 "embedding": str(embedding),
                 "logical_id": chunk.logical_id,
-                "tenant_id": tenant_id,
-                "artifact_id": artifact_id,
+                "tenant_id": uuid.UUID(tenant_id),
+                "artifact_id": uuid.UUID(artifact_id),
             },
         )
 
