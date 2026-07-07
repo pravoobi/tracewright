@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Demo Shop — Your Cart</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="page">
+    <nav class="topbar">
+      <span>Demo Shop</span>
+      <form method="post" action="/logout"><button type="submit">Log out</button></form>
+    </nav>
+
+    <h1>Your Cart</h1>
+
+    <% if (message) { %>
+      <p role="<%= message.type === 'error' ? 'alert' : 'status' %>" class="message <%= message.type === 'error' ? 'message-error' : '' %>"><%= message.text %></p>
+    <% } %>
+
+    <form method="post" action="/cart/update">
+      <table>
+        <thead>
+          <tr><th scope="col">Item</th><th scope="col">Price</th><th scope="col">Quantity</th><th scope="col">Line total</th></tr>
+        </thead>
+        <tbody>
+          <% lines.forEach(function(line) { %>
+            <tr>
+              <td><%= line.name %></td>
+              <td>$<%= (line.priceCents / 100).toFixed(2) %></td>
+              <td>
+                <label for="qty-<%= line.id %>">Quantity for <%= line.name %></label>
+                <input id="qty-<%= line.id %>" name="qty-<%= line.id %>" type="number" min="0" value="<%= line.qty %>" />
+              </td>
+              <td>$<%= (line.lineTotalCents / 100).toFixed(2) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      <button type="submit">Update cart</button>
+    </form>
+
+    <form method="post" action="/cart/discount" class="discount-form">
+      <label for="code">Discount code</label>
+      <input id="code" name="code" type="text" />
+      <button type="submit">Apply discount code</button>
+    </form>
+
+    <dl class="totals">
+      <dt>Subtotal</dt>
+      <dd>$<%= subtotalDisplay %></dd>
+      <% if (discount) { %>
+        <dt>Discount (<%= discount.code %>, <%= discount.percentOff %>%)</dt>
+        <dd>-$<%= discountDisplay %></dd>
+      <% } %>
+      <dt>Total</dt>
+      <dd id="order-total">$<%= totalDisplay %></dd>
+    </dl>
+
+    <a href="/checkout" role="button">Proceed to checkout</a>
+  </main>
+</body>
+</html>

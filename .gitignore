@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.uv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Storage state (encrypted, but never commit to public repos)
+*.storage-state.json
+auth-sessions/
+test-scaffold/.auth/
+
+# Database
+*.sqlite
+
+# Docker volumes
+postgres-data/
+minio-data/
+redis-data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Langfuse / OTel local data
+langfuse-data/
+
+# evals golden set (may contain PII from real docs — track explicitly)
+backend/evals/golden/*.pdf
+backend/evals/golden/*.xlsx
+backend/evals/golden/*.docx

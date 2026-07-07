@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Demo Shop — Checkout</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="page">
+    <nav class="topbar">
+      <span>Demo Shop</span>
+      <form method="post" action="/logout"><button type="submit">Log out</button></form>
+    </nav>
+
+    <h1>Checkout</h1>
+
+    <table>
+      <thead>
+        <tr><th scope="col">Item</th><th scope="col">Quantity</th><th scope="col">Line total</th></tr>
+      </thead>
+      <tbody>
+        <% lines.forEach(function(line) { %>
+          <tr>
+            <td><%= line.name %></td>
+            <td><%= line.qty %></td>
+            <td>$<%= (line.lineTotalCents / 100).toFixed(2) %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+
+    <dl class="totals">
+      <dt>Subtotal</dt>
+      <dd>$<%= subtotalDisplay %></dd>
+      <% if (discount) { %>
+        <dt>Discount (<%= discount.code %>, <%= discount.percentOff %>%)</dt>
+        <dd>-$<%= discountDisplay %></dd>
+      <% } %>
+      <dt>Order total</dt>
+      <dd id="order-total">$<%= totalDisplay %></dd>
+    </dl>
+
+    <form method="post" action="/checkout/place-order">
+      <button type="submit">Place order</button>
+    </form>
+  </main>
+</body>
+</html>

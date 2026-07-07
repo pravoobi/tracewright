@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Demo Shop — Order Confirmed</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="page">
+    <h1>Order Confirmed</h1>
+    <p role="status">
+      Order <strong id="order-id"><%= orderId %></strong> placed. Total charged: $<%= totalDisplay %>.
+    </p>
+    <a href="/cart" role="button">Back to cart</a>
+  </main>
+</body>
+</html>

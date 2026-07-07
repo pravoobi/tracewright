@@ -1,0 +1,34 @@
+{
+  "CartPage": {
+    "url_pattern": "http://localhost:4000/cart",
+    "locators": {
+      "discountCodeInput": "page.getByRole(\"textbox\", { name: \"Discount code\" })",
+      "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
+      "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
+      "orderTotal": "page.locator(\"#order-total\")"
+    },
+    "locator_strategies": {
+      "discountCodeInput": "role",
+      "applyDiscountButton": "role",
+      "proceedToCheckoutButton": "role",
+      "orderTotal": "css_warned"
+    },
+    "warnings": [
+      "CSS locator used for 'cart order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
+    ]
+  },
+  "CheckoutPage": {
+    "url_pattern": "http://localhost:4000/checkout",
+    "locators": {
+      "placeOrderButton": "page.getByRole(\"button\", { name: \"Place order\" })",
+      "orderTotal": "page.locator(\"#order-total\")"
+    },
+    "locator_strategies": {
+      "placeOrderButton": "role",
+      "orderTotal": "css_warned"
+    },
+    "warnings": [
+      "CSS locator used for 'checkout order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
+    ]
+  }
+}

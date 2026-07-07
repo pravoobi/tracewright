@@ -1,0 +1,37 @@
+[
+  {
+    "id": "golden-001",
+    "hint_block_type": "paragraph",
+    "content": "The system shall allow authenticated users to apply a discount code at checkout. The discount shall reduce the order total by the percentage specified in the discount record.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4
+  },
+  {
+    "id": "golden-002",
+    "hint_block_type": "paragraph",
+    "content": "A discount code may not be applied to orders with a total below $10.00.",
+    "expected_type": "business_rule",
+    "page_number": 4
+  },
+  {
+    "id": "golden-003",
+    "hint_block_type": "paragraph",
+    "content": "Discount code: A string of 6–12 alphanumeric characters issued by the marketing team to reduce order price.",
+    "expected_type": "glossary_term",
+    "page_number": 2
+  },
+  {
+    "id": "golden-004",
+    "hint_block_type": "paragraph",
+    "content": "Document revision history: v1.0 (2025-01-10, initial draft), v1.1 (2025-03-05, added section 4).",
+    "expected_type": "out_of_scope",
+    "page_number": 1
+  },
+  {
+    "id": "golden-005",
+    "hint_block_type": "paragraph",
+    "content": "For example, if the user has a 20% discount code and their cart totals $50, the discount reduces the total to $40.",
+    "expected_type": "example",
+    "page_number": 4
+  }
+]
