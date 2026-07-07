@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.config import settings
 from backend.src.knowledge.retrieval import retrieve_for_planning
-from backend.src.llm.client import complete
+from backend.src.llm.client import complete, extract_json_object
 from backend.src.llm.langfuse_tracer import trace
 
 log = structlog.get_logger()
@@ -99,17 +99,7 @@ def _build_prompt(feature_area: str, doc_version: str, context: dict[str, Any]) 
 
 def _parse_plan(raw: str, doc_version: str) -> dict[str, Any]:
     try:
-        # A plain removesuffix("```") only strips a fence that's the literal
-        # last thing in the string — it silently does nothing once the model
-        # adds trailing content after it, leaving json.loads to fail with
-        # "Extra data". Strip a leading fence, then parse only the first JSON
-        # value and ignore anything trailing (same fix as classify.py's
-        # _extract_json_object / healer.py).
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            first_newline = cleaned.find("\n")
-            cleaned = cleaned[first_newline + 1:] if first_newline != -1 else cleaned.lstrip("`")
-        plan = json.JSONDecoder().raw_decode(cleaned.strip())[0]
+        plan = extract_json_object(raw)
     except json.JSONDecodeError:
         log.error("planner.json_parse_failed", raw_preview=raw[:200])
         plan = {"test_cards": [], "coverage_gaps": [], "clarification_flags": []}

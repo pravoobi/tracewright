@@ -136,6 +136,7 @@ async def _ingest_bug_export(
 
     records, unmapped = parse_bug_export(data)
 
+    ingested = 0
     async with async_session_factory() as session:
         for rec in records:
             if not rec.title or rec.title == "Untitled":
@@ -152,9 +153,10 @@ async def _ingest_bug_export(
                 root_cause=rec.root_cause,
                 fix_version=rec.fix_version,
                 linked_story=rec.linked_story,
-                closed_at=None,
+                closed_at=_parse_closed_at(rec.closed_at),
                 metadata_={"unmapped_columns": unmapped, "raw": rec.raw or {}},
             ))
+            ingested += 1
 
         await session.execute(
             update(SourceArtifact)
@@ -163,7 +165,30 @@ async def _ingest_bug_export(
         )
         await session.commit()
 
-    log.info("worker.bugs_ingested", artifact_id=artifact_id, bugs=len(records))
+    log.info(
+        "worker.bugs_ingested",
+        artifact_id=artifact_id,
+        bugs=ingested,
+        skipped_untitled=len(records) - ingested,
+    )
+
+
+def _parse_closed_at(value: str | None):
+    """Bug export date columns arrive as free-text strings with no
+    guaranteed format. Try ISO first (what most exports use), fall back to
+    a couple of common alternates, and give up to None rather than crash
+    the whole ingestion job over one bad date cell."""
+    if not value:
+        return None
+    from datetime import datetime
+
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    log.warning("worker.unparseable_closed_at", value=value)
+    return None
 
 
 async def _fetch_existing_chunks(session: Any, tenant_id: str) -> list[dict]:

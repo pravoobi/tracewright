@@ -26,7 +26,6 @@ testable without that loop:
 """
 from __future__ import annotations
 
-import json
 import re
 import uuid
 from dataclasses import dataclass
@@ -40,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.config import settings
 from backend.src.db.models import TestCard, TestResult, TestRun
-from backend.src.llm.client import complete
+from backend.src.llm.client import complete, extract_json_object
 
 log = structlog.get_logger()
 
@@ -93,16 +92,6 @@ class HealDecision:
     detail: str
 
 
-def _extract_json_object(raw: str) -> dict:
-    """Same tolerant-parsing approach as classify.py's _extract_json_object —
-    strips a leading markdown fence and ignores any trailing content."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        first_newline = cleaned.find("\n")
-        cleaned = cleaned[first_newline + 1:] if first_newline != -1 else cleaned.lstrip("`")
-    return json.JSONDecoder().raw_decode(cleaned.strip())[0]
-
-
 def classify_failure_heuristic(error_message: str) -> FailureType | None:
     """Fast pattern-match pass. Returns None if ambiguous (caller falls back to an LLM call)."""
     if any(p.search(error_message) for p in _NOT_FOUND_PATTERNS):
@@ -138,7 +127,7 @@ async def classify_failure(error_message: str, tenant_id: str | None = None) -> 
             system=_SYSTEM_PROMPT,
             max_tokens=64,
         )
-        parsed = _extract_json_object(raw)
+        parsed = extract_json_object(raw)
         result = parsed.get("type")
         if result in ("locator_timing", "logic_assertion"):
             return result
@@ -193,7 +182,7 @@ async def verify_outcome(
         system=_SYSTEM_PROMPT,
         max_tokens=200,
     )
-    parsed = _extract_json_object(raw)
+    parsed = extract_json_object(raw)
     reasoning = parsed.get("reasoning", "")
     outcome_still_valid = bool(parsed.get("outcome_still_valid", False))
     log.info(

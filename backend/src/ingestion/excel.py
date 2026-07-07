@@ -59,6 +59,21 @@ class BugRecord:
     raw: dict[str, Any] | None = None
 
 
+def _clean(value: Any) -> str | None:
+    """Blank Excel cells come back from `pd.read_excel(..., dtype=str)` as the
+    literal string "nan" (pandas reads an empty cell as float NaN, then the
+    dtype=str coercion stringifies it), not as None or "". Left unhandled,
+    every blank cell — including a blank title — becomes the 4-character
+    string "nan" instead of being treated as missing, and a raw NaN float
+    surviving into a JSONB column isn't valid JSON at all."""
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    s = str(value).strip()
+    return None if s == "" or s.lower() == "nan" else s
+
+
 def parse_bug_export(
     data: bytes,
     column_mapping: dict[str, str] | None = None,
@@ -85,10 +100,13 @@ def parse_bug_export(
 
     records: list[BugRecord] = []
     for _, row in df.iterrows():
-        mapped: dict[str, Any] = {effective_map[c]: row[c] for c in df.columns if c in effective_map}
+        mapped: dict[str, Any] = {
+            effective_map[c]: _clean(row[c]) for c in df.columns if c in effective_map
+        }
+        raw_clean = {str(k): _clean(v) for k, v in row.to_dict().items()}
         records.append(BugRecord(
             external_id=mapped.get("external_id"),
-            title=str(mapped.get("title", "")).strip() or "Untitled",
+            title=mapped.get("title") or "Untitled",
             description=mapped.get("description"),
             severity=mapped.get("severity"),
             component=mapped.get("component"),
@@ -96,8 +114,8 @@ def parse_bug_export(
             root_cause=mapped.get("root_cause"),
             fix_version=mapped.get("fix_version"),
             linked_story=mapped.get("linked_story"),
-            closed_at=str(mapped.get("closed_at")) if mapped.get("closed_at") else None,
-            raw=row.to_dict(),
+            closed_at=mapped.get("closed_at"),
+            raw=raw_clean,
         ))
 
     log.info("excel.parsed", records=len(records), unmapped_columns=unmapped)
@@ -106,8 +124,7 @@ def parse_bug_export(
 
 async def suggest_column_mapping(columns: list[str], tenant_id: str | None = None) -> dict[str, str]:
     """LLM-assisted suggestion for unmapped columns. Customer confirms in the UI."""
-    from backend.src.llm.client import complete
-    import json
+    from backend.src.llm.client import complete, extract_json_object
 
     prompt = (
         f"Map these spreadsheet column names to canonical bug fields.\n"
@@ -121,7 +138,7 @@ async def suggest_column_mapping(columns: list[str], tenant_id: str | None = Non
             tenant_id=tenant_id,
             feature="column_mapper",
         )
-        return json.loads(raw)
+        return extract_json_object(raw)
     except Exception as e:
         log.warning("excel.mapping_suggestion_failed", error=str(e))
         return {}
