@@ -1,9 +1,27 @@
+import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+if sys.platform == "win32":
+    # Playwright's async API launches its browser as a subprocess, which
+    # asyncio's SelectorEventLoop cannot do on Windows (raises
+    # NotImplementedError from _make_subprocess_transport). This is why
+    # Generator Phase 1 (build_app_model) had only ever run via standalone
+    # scripts before this line existed -- never inside the actual server.
+    #
+    # NOTE: this only takes effect when uvicorn is run WITHOUT --reload
+    # (scripts/run-backend-no-reload.sh). Confirmed by direct testing:
+    # identical code, --reload's multiprocessing worker on Windows resets
+    # the policy back to Selector regardless of this line, while a plain
+    # `uvicorn backend.src.main:app` respects it and gets ProactorEventLoop.
+    # Everything else works fine under --reload; only the Generator's
+    # build-registry endpoint (real Playwright browser launch) needs this.
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from backend.src.api.environments import router as environments_router
 from backend.src.api.generator import router as generator_router

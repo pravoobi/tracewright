@@ -69,3 +69,7 @@ def artifact_path(tenant_id: str, artifact_id: str, filename: str) -> str:
 
 def auth_session_path(tenant_id: str, environment_id: str) -> str:
     return str(PurePosixPath("auth-sessions") / tenant_id / f"{environment_id}.enc")
+
+
+def registry_path(tenant_id: str, environment_id: str) -> str:
+    return str(PurePosixPath("registries") / tenant_id / f"{environment_id}.json")

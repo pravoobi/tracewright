@@ -1,27 +1,34 @@
-"""Generator API — turn an approved test card into a real Playwright test file.
+"""Generator API — build the page-object registry (Phase 1) and turn an
+approved test card into a real Playwright test file (Phase 2).
 
-Phase 2 only (codegen against an existing page-object registry). Phase 1
-(building that registry via a live Playwright session against staging) has
-no API endpoint yet either — it's only ever been run via
-scripts/run-generator-phase2*.py's hardcoded registry path. Wiring Phase 1
-into the API is a separate, bigger gap (needs live browser session handling
-inside a request, timeout management) left for later.
+Phase 1 walks flows via a live Playwright session against the environment's
+staging URL, verifying every locator before it's recorded (never emit an
+unverified locator). The caller supplies which pages/elements to walk
+(test_card_flows) — deriving that automatically from approved test cards'
+descriptions would need its own LLM-based flow-extraction step; V1 keeps
+that explicit rather than guessing.
 """
 from __future__ import annotations
 
 import json
 import os
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from minio.error import S3Error
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.db.models import TestCard
+from backend.src.db.models import Environment, TestCard
 from backend.src.db.session import get_session
 
 router = APIRouter(prefix="/generator", tags=["generator"])
 
-_REGISTRY_PATH = os.path.join(
+# Fallback registry for the existing demo/eval setup, which predates
+# per-environment MinIO storage — the new build-registry endpoint always
+# writes to MinIO; this local file is only read if nothing's there yet.
+_FALLBACK_REGISTRY_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "evals", "golden", "app_model_registry.json"
 )
 _OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "test-scaffold", "tests")
@@ -39,13 +46,82 @@ def _infer_locator_strategy(code: str) -> str:
     return "role"
 
 
+class BuildRegistryRequest(BaseModel):
+    test_card_flows: list[dict[str, Any]]
+
+
+@router.post("/{tenant_id}/environments/{environment_id}/build-registry")
+async def build_registry(
+    tenant_id: str,
+    environment_id: str,
+    body: BuildRegistryRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Phase 1: walk the given flows against the live environment, verifying
+    every locator, and persist the resulting page-object registry."""
+    from backend.src.agents.generator.app_model import build_app_model
+    from backend.src.storage.files import registry_path, upload_file
+
+    env = await session.get(Environment, uuid.UUID(environment_id))
+    if env is None or str(env.tenant_id) != tenant_id:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    if not env.url:
+        raise HTTPException(status_code=400, detail="Environment has no URL configured")
+
+    registry = await build_app_model(
+        tenant_id=tenant_id,
+        environment_id=environment_id,
+        staging_url=env.url,
+        test_card_flows=body.test_card_flows,
+    )
+
+    data = registry.to_dict()
+    requested = sum(len(f.get("elements", [])) for f in body.test_card_flows)
+    resolved = sum(len(po["locators"]) for po in data.values())
+
+    upload_file(
+        registry_path(tenant_id, environment_id),
+        json.dumps(data, indent=2).encode("utf-8"),
+        content_type="application/json",
+    )
+
+    return {
+        "pages": list(data.keys()),
+        "locators_requested": requested,
+        "locators_resolved": resolved,
+        "registry": data,
+    }
+
+
+async def _load_registry(tenant_id: str, session: AsyncSession):
+    from backend.src.agents.generator.app_model import AppModelRegistry
+    from backend.src.storage.files import download_file, registry_path
+
+    from sqlalchemy import select
+
+    env_id = await session.scalar(
+        select(Environment.id).where(Environment.tenant_id == uuid.UUID(tenant_id)).limit(1)
+    )
+    if env_id is not None:
+        try:
+            raw = download_file(registry_path(tenant_id, str(env_id)))
+            return AppModelRegistry.from_dict(json.loads(raw))
+        except S3Error:
+            pass  # no registry built via the API yet for this environment
+
+    if os.path.exists(_FALLBACK_REGISTRY_PATH):
+        with open(_FALLBACK_REGISTRY_PATH) as f:
+            return AppModelRegistry.from_dict(json.load(f))
+
+    return None
+
+
 @router.post("/{tenant_id}/cards/{card_id}/generate")
 async def generate_card_test(
     tenant_id: str,
     card_id: str,
     session: AsyncSession = Depends(get_session),
 ):
-    from backend.src.agents.generator.app_model import AppModelRegistry
     from backend.src.agents.generator.codegen import generate_test_file, safe_filename
     from sqlalchemy import update
 
@@ -58,13 +134,13 @@ async def generate_card_test(
             detail=f"Test card must be approved before generation (status: {card.approval_status})",
         )
 
-    if not os.path.exists(_REGISTRY_PATH):
+    registry = await _load_registry(tenant_id, session)
+    if registry is None:
         raise HTTPException(
             status_code=503,
-            detail="No page-object registry found — run Generator Phase 1 first",
+            detail="No page-object registry found — run Generator Phase 1 first "
+            "(POST /generator/{tenant_id}/environments/{environment_id}/build-registry)",
         )
-    with open(_REGISTRY_PATH) as f:
-        registry = AppModelRegistry.from_dict(json.load(f))
 
     test_card_dict = {
         "test_id": card.test_id,
