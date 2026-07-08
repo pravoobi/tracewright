@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.src.api.environments import router as environments_router
 from backend.src.api.ingestion import router as ingestion_router
@@ -10,6 +11,7 @@ from backend.src.api.plans import router as plans_router
 from backend.src.api.tests import router as tests_router
 from backend.src.api.upload import router as upload_router
 from backend.src.config import settings
+from backend.src.llm.cost import TenantBudgetExceededError
 
 log = structlog.get_logger()
 
@@ -34,6 +36,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(TenantBudgetExceededError)
+async def tenant_budget_exceeded_handler(request: Request, exc: TenantBudgetExceededError):
+    return JSONResponse(status_code=429, content={"detail": str(exc)})
+
 
 app.include_router(upload_router, prefix="/api/v1")
 app.include_router(ingestion_router, prefix="/api/v1")

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 import structlog
-from sqlalchemy import text
+from sqlalchemy import select, func
 
 from backend.src.config import settings
+from backend.src.db.models import LlmCall
+from backend.src.db.session import async_session_factory
 
 log = structlog.get_logger()
 
@@ -12,6 +17,10 @@ _COST_PER_1M: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-4-5-20251001": (0.25, 1.25),
 }
+
+
+class TenantBudgetExceededError(Exception):
+    """Raised by check_tenant_budget when a tenant is over their daily LLM spend cap."""
 
 
 def _estimate_usd(model: str, input_tokens: int, output_tokens: int) -> float:
@@ -38,14 +47,56 @@ async def record_llm_call(
         estimated_usd=estimated_usd,
         latency_ms=latency_ms,
     )
-    # TODO: persist to a llm_calls table and enforce per-tenant daily budgets
-    # For now we log so Langfuse/structured logs capture it from day one
+
+    # Own short-lived session, deliberately decoupled from the caller's
+    # transaction: the LLM call already cost real money by this point, so
+    # the cost record must persist even if the caller's own business-logic
+    # transaction later rolls back.
+    async with async_session_factory() as session:
+        session.add(
+            LlmCall(
+                tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
+                feature=feature,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                estimated_usd=estimated_usd,
+                latency_ms=latency_ms,
+            )
+        )
+        await session.commit()
 
 
-async def check_tenant_budget(tenant_id: str, estimated_usd: float) -> bool:
-    """Return False if this call would breach the tenant's daily budget."""
+async def check_tenant_budget(tenant_id: str) -> None:
+    """Raise TenantBudgetExceededError if this tenant has already reached or
+    exceeded their daily LLM spend cap. Checked BEFORE making a call — this
+    blocks further spend once a tenant is over budget, rather than trying to
+    predict whether the specific incoming call would push them over (which
+    would require knowing output tokens before the call completes)."""
     budget = settings.default_tenant_daily_llm_budget_usd
-    if budget == 0:
-        return True  # unlimited in dev
-    # TODO: query today's spend from llm_calls table and compare
-    return True
+    if budget <= 0:
+        return  # unlimited in dev (default)
+
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(func.coalesce(func.sum(LlmCall.estimated_usd), 0.0)).where(
+                LlmCall.tenant_id == uuid.UUID(tenant_id),
+                LlmCall.created_at >= today_start,
+            )
+        )
+        spent_today = result.scalar_one()
+
+    if spent_today >= budget:
+        log.warning(
+            "llm.budget_exceeded",
+            tenant_id=tenant_id,
+            spent_today=spent_today,
+            budget=budget,
+        )
+        raise TenantBudgetExceededError(
+            f"Tenant {tenant_id} has spent ${spent_today:.4f} today, "
+            f"at or above the ${budget:.4f} daily LLM budget."
+        )

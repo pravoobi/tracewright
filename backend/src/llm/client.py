@@ -8,7 +8,7 @@ import litellm
 import structlog
 
 from backend.src.config import settings
-from backend.src.llm.cost import record_llm_call
+from backend.src.llm.cost import check_tenant_budget, record_llm_call
 
 log = structlog.get_logger()
 
@@ -41,6 +41,10 @@ async def complete(
 ) -> str:
     """Single-turn completion. Model is swappable via config — never wire SDK calls directly."""
     resolved_model = model or settings.planner_model
+
+    if tenant_id:
+        await check_tenant_budget(tenant_id)
+
     started = time.monotonic()
 
     response = await litellm.acompletion(

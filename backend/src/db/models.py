@@ -259,3 +259,25 @@ class TestResult(Base):
 
     run: Mapped[TestRun] = relationship(back_populates="results")
     test_card: Mapped[TestCard] = relationship(back_populates="test_results")
+
+
+class LlmCall(Base):
+    """One row per LLM completion — the persistence layer for cost.py's
+    per-tenant daily budget enforcement. tenant_id has no FK: cost recording
+    must survive even if the caller's own transaction rolls back, and some
+    calls (e.g. eval harness runs) may use tenant ids that don't exist in
+    the tenants table."""
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    feature: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
