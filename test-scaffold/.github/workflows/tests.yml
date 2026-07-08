@@ -14,35 +14,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: test-scaffold/package.json
+          cache: "pnpm"
+          cache-dependency-path: test-scaffold/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: test-scaffold
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
         working-directory: test-scaffold
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Download storage state
         env:
           STORAGE_STATE_URL: ${{ secrets.STORAGE_STATE_URL }}
           STORAGE_STATE_TOKEN: ${{ secrets.STORAGE_STATE_TOKEN }}
         run: |
+          mkdir -p test-scaffold/.auth
           curl -H "Authorization: Bearer $STORAGE_STATE_TOKEN" \
-               -o test-scaffold/fixtures/storage-state.json \
+               -o test-scaffold/.auth/demo-app.json \
                "$STORAGE_STATE_URL"
 
       - name: Run Playwright tests
         working-directory: test-scaffold
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
-          STORAGE_STATE_PATH: fixtures/storage-state.json
-        run: npx playwright test
+          STORAGE_STATE_PATH: .auth/demo-app.json
+        run: pnpm exec playwright test
 
       - name: Upload test results
         if: always()
