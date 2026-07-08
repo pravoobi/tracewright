@@ -74,6 +74,38 @@ def _clean(value: Any) -> str | None:
     return None if s == "" or s.lower() == "nan" else s
 
 
+def parse_closed_at(value: str | None):
+    """Bug export date columns arrive as free-text strings with no
+    guaranteed format. Try ISO first (what most exports use), fall back to
+    a couple of common alternates, and give up to None rather than crash
+    the whole ingestion job over one bad date cell."""
+    if not value:
+        return None
+    from datetime import datetime
+
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    log.warning("excel.unparseable_closed_at", value=value)
+    return None
+
+
+def column_signature(columns: list[str]) -> str:
+    """Stable signature for a raw column set, used to recognize the same
+    export format on repeat uploads so a confirmed mapping doesn't need to
+    be re-entered every time."""
+    return ",".join(sorted(str(c).strip().lower() for c in columns))
+
+
+def peek_columns(data: bytes) -> list[str]:
+    """Read just the header row — used to compute a column_signature and
+    check for a saved mapping profile before doing the full parse."""
+    df = pd.read_excel(io.BytesIO(data), dtype=str, nrows=0)
+    return [str(c).strip().lower() for c in df.columns]
+
+
 def parse_bug_export(
     data: bytes,
     column_mapping: dict[str, str] | None = None,
@@ -86,17 +118,26 @@ def parse_bug_export(
     df = pd.read_excel(io.BytesIO(data), dtype=str)
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # Build effective mapping: explicit mapping overrides aliases
+    # Build effective mapping: explicit mapping overrides aliases.
+    # column_mapping may legitimately be {} — a customer can confirm that
+    # NONE of a format's extra columns have a canonical equivalent (e.g.
+    # "reporter", "environment"). That confirmation must still count as
+    # "reviewed", so a column present in column_mapping with an empty
+    # string value is treated as explicitly-skipped, not unresolved.
+    column_mapping = column_mapping or {}
     effective_map: dict[str, str] = {}
+    reviewed: set[str] = set()
     for col in df.columns:
-        if column_mapping and col in column_mapping:
-            effective_map[col] = column_mapping[col]
+        if col in column_mapping:
+            reviewed.add(col)
+            if column_mapping[col]:
+                effective_map[col] = column_mapping[col]
         elif col in _ALIAS_MAP:
             effective_map[col] = _ALIAS_MAP[col]
         elif col in CANONICAL_COLUMNS:
             effective_map[col] = col
 
-    unmapped = [c for c in df.columns if c not in effective_map]
+    unmapped = [c for c in df.columns if c not in effective_map and c not in reviewed]
 
     records: list[BugRecord] = []
     for _, row in df.iterrows():

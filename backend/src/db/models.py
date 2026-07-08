@@ -281,3 +281,25 @@ class LlmCall(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class ColumnMappingProfile(Base):
+    """A customer's confirmed Excel bug-export column mapping, keyed by a
+    stable signature of the raw column set so the same export format is
+    recognized automatically on repeat uploads (CLAUDE.md: "Store mapping
+    per export format")."""
+
+    __tablename__ = "column_mapping_profiles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "column_signature", name="uq_column_mapping_tenant_signature"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    column_signature: Mapped[str] = mapped_column(Text, nullable=False)
+    mapping: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

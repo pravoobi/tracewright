@@ -57,7 +57,6 @@ async def parse_artifact(
     from backend.src.db.models import Chunk, SourceArtifact
     from backend.src.db.session import async_session_factory
     from backend.src.ingestion.embed import embed_and_store_chunks
-    from backend.src.ingestion.excel import parse_bug_export
     from backend.src.ingestion.layout import extract_layout
     from backend.src.ingestion.normalize import normalize
     from backend.src.ingestion.structure import recover_structure
@@ -129,12 +128,36 @@ async def parse_artifact(
 async def _ingest_bug_export(
     artifact_id: str, tenant_id: str, filename: str, data: bytes
 ) -> None:
-    from backend.src.db.models import Bug, SourceArtifact
-    from backend.src.db.session import async_session_factory
-    from backend.src.ingestion.excel import parse_bug_export
-    from sqlalchemy import update
+    from sqlalchemy import select, update
 
-    records, unmapped = parse_bug_export(data)
+    from backend.src.db.models import Bug, ColumnMappingProfile, SourceArtifact
+    from backend.src.db.session import async_session_factory
+    from backend.src.ingestion.excel import (
+        column_signature,
+        parse_bug_export,
+        parse_closed_at,
+        peek_columns,
+    )
+
+    raw_columns = peek_columns(data)
+    signature = column_signature(raw_columns)
+
+    # A previously-confirmed mapping for this exact export format (same
+    # column set) is applied automatically — the customer shouldn't have to
+    # re-map the same spreadsheet template on every subsequent upload.
+    saved_mapping: dict[str, str] = {}
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(ColumnMappingProfile.mapping).where(
+                ColumnMappingProfile.tenant_id == uuid.UUID(tenant_id),
+                ColumnMappingProfile.column_signature == signature,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row:
+            saved_mapping = row
+
+    records, unmapped = parse_bug_export(data, column_mapping=saved_mapping)
 
     ingested = 0
     async with async_session_factory() as session:
@@ -153,7 +176,7 @@ async def _ingest_bug_export(
                 root_cause=rec.root_cause,
                 fix_version=rec.fix_version,
                 linked_story=rec.linked_story,
-                closed_at=_parse_closed_at(rec.closed_at),
+                closed_at=parse_closed_at(rec.closed_at),
                 metadata_={"unmapped_columns": unmapped, "raw": rec.raw or {}},
             ))
             ingested += 1
@@ -161,7 +184,14 @@ async def _ingest_bug_export(
         await session.execute(
             update(SourceArtifact)
             .where(SourceArtifact.id == uuid.UUID(artifact_id))
-            .values(status="processed", metadata_={"unmapped_columns": unmapped})
+            .values(
+                status="processed",
+                metadata_={
+                    "unmapped_columns": unmapped,
+                    "all_columns": raw_columns,
+                    "column_signature": signature,
+                },
+            )
         )
         await session.commit()
 
@@ -170,25 +200,8 @@ async def _ingest_bug_export(
         artifact_id=artifact_id,
         bugs=ingested,
         skipped_untitled=len(records) - ingested,
+        unmapped_columns=unmapped,
     )
-
-
-def _parse_closed_at(value: str | None):
-    """Bug export date columns arrive as free-text strings with no
-    guaranteed format. Try ISO first (what most exports use), fall back to
-    a couple of common alternates, and give up to None rather than crash
-    the whole ingestion job over one bad date cell."""
-    if not value:
-        return None
-    from datetime import datetime
-
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    log.warning("worker.unparseable_closed_at", value=value)
-    return None
 
 
 async def _fetch_existing_chunks(session: Any, tenant_id: str) -> list[dict]:

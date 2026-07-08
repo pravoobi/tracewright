@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
+import { ColumnMapper } from "../components/ColumnMapper";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
@@ -16,6 +17,13 @@ interface Chunk {
   review_status: string;
 }
 
+interface Artifact {
+  id: string;
+  filename: string;
+  type: string;
+  unmapped_columns: string[];
+}
+
 export function IngestionReview() {
   const qc = useQueryClient();
   const [reviewStartTimes] = useState<Record<string, number>>({});
@@ -27,6 +35,15 @@ export function IngestionReview() {
         .get(`${API}/ingestion/${TENANT_ID}/chunks?review_status=pending`)
         .then((r) => r.data),
   });
+
+  const { data: artifacts = [] } = useQuery<Artifact[]>({
+    queryKey: ["artifacts", TENANT_ID],
+    queryFn: () => axios.get(`${API}/ingestion/${TENANT_ID}/artifacts`).then((r) => r.data),
+  });
+
+  const bugExportsNeedingMapping = artifacts.filter(
+    (a) => a.type === "bug_export" && a.unmapped_columns.length > 0
+  );
 
   const reviewMutation = useMutation({
     mutationFn: ({
@@ -75,6 +92,10 @@ export function IngestionReview() {
           </button>
         </div>
       </div>
+
+      {bugExportsNeedingMapping.map((a) => (
+        <ColumnMapper key={a.id} tenantId={TENANT_ID} artifactId={a.id} filename={a.filename} />
+      ))}
 
       <div className="space-y-4">
         {pendingChunks.map((chunk) => (
