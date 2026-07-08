@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { ColumnMapper } from "../components/ColumnMapper";
@@ -26,7 +26,7 @@ interface Artifact {
 
 export function IngestionReview() {
   const qc = useQueryClient();
-  const [reviewStartTimes] = useState<Record<string, number>>({});
+  const [reviewStartTimes, setReviewStartTimes] = useState<Record<string, number>>({});
 
   const { data: chunks = [], isLoading } = useQuery<Chunk[]>({
     queryKey: ["chunks", TENANT_ID, "pending"],
@@ -35,6 +35,20 @@ export function IngestionReview() {
         .get(`${API}/ingestion/${TENANT_ID}/chunks?review_status=pending`)
         .then((r) => r.data),
   });
+
+  // Records when each chunk first appeared in the reviewer's queue, so
+  // review_duration_ms reflects actual time-to-decision rather than the
+  // ~0ms gap between two Date.now() calls made back-to-back at submit time.
+  useEffect(() => {
+    const newStarts: Record<string, number> = {};
+    for (const c of chunks) {
+      if (!(c.id in reviewStartTimes)) newStarts[c.id] = Date.now();
+    }
+    if (Object.keys(newStarts).length > 0) {
+      setReviewStartTimes((prev) => ({ ...prev, ...newStarts }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chunks]);
 
   const { data: artifacts = [] } = useQuery<Artifact[]>({
     queryKey: ["artifacts", TENANT_ID],

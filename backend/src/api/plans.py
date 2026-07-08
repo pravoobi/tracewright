@@ -73,6 +73,7 @@ async def list_cards(
             "test_id": c.test_id,
             "title": c.title,
             "description": c.description,
+            "preconditions": c.preconditions,
             "priority": c.priority,
             "test_type": c.test_type,
             "approval_status": c.approval_status,
