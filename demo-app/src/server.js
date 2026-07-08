@@ -80,6 +80,21 @@ app.post("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/login"));
 });
 
+// Test-only: every generated Playwright test presents the same
+// pre-captured storage-state session cookie, so without this they all
+// share one server-side session (default express-session MemoryStore)
+// and mutate the same cart/discount state. Called from a beforeEach hook
+// so each test starts from a known-clean precondition regardless of
+// what a previous test left behind.
+app.post("/reset", (req, res) => {
+  if (req.session) {
+    req.session.cart = defaultCart();
+    req.session.discount = null;
+    req.session.flash = null;
+  }
+  res.status(204).end();
+});
+
 app.get("/cart", requireAuth, (req, res) => {
   const cart = req.session.cart || defaultCart();
   const subtotal = subtotalCents(cart);

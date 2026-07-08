@@ -25,8 +25,13 @@ test.describe('TC-005: Prevent duplicate application of the same discount code o
   test('rejects re-applying an already-applied discount code to the same order', async ({ page }) => {
     const cartPage = new CartPage(page);
 
-    // Navigate to the cart which already has SAVE10 applied per preconditions
+    // Set up the test card's stated precondition ourselves: the fixture only
+    // guarantees an authenticated user with a clean cart, not an arbitrary
+    // per-test discount state, so "SAVE10 already applied" has to be applied
+    // here rather than assumed.
     await page.goto(cartPage.url_pattern);
+    await cartPage.discountCodeInput.fill('SAVE10');
+    await cartPage.applyDiscountButton.click();
 
     // Verify: discount summary confirms the discount code is already applied before attempting duplication
     await expect(cartPage.discountSummary).toBeVisible();
