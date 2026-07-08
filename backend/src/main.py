@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.src.api.environments import router as environments_router
+from backend.src.api.generator import router as generator_router
 from backend.src.api.ingestion import router as ingestion_router
+from backend.src.api.metrics import router as metrics_router
 from backend.src.api.plans import router as plans_router
 from backend.src.api.tests import router as tests_router
 from backend.src.api.upload import router as upload_router
@@ -47,6 +49,8 @@ app.include_router(ingestion_router, prefix="/api/v1")
 app.include_router(plans_router, prefix="/api/v1")
 app.include_router(environments_router, prefix="/api/v1")
 app.include_router(tests_router, prefix="/api/v1")
+app.include_router(generator_router, prefix="/api/v1")
+app.include_router(metrics_router, prefix="/api/v1")
 
 
 @app.get("/health")

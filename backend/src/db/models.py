@@ -159,6 +159,10 @@ class TestCard(Base):
     approved_by: Mapped[str | None] = mapped_column(Text)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    # Product metric (CLAUDE.md: "human edits per generated test"). Counts
+    # review actions that included a non-empty `edits` payload — not touched
+    # by locator_strategy/playwright_code_path updates from the Generator.
+    edit_count: Mapped[int] = mapped_column(Integer, default=0)
     playwright_code_path: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

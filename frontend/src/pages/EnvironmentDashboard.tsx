@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { CoverageStats } from "../components/CoverageStats";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
@@ -26,6 +27,7 @@ export function EnvironmentDashboard() {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Environments</h1>
+      <CoverageStats tenantId={TENANT_ID} />
       <div className="space-y-4">
         {envs.map((env) => (
           <div key={env.id} className="border rounded-lg p-4 bg-white shadow-sm">

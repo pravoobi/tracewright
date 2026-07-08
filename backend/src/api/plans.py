@@ -109,6 +109,10 @@ async def review_card(
         for field, val in body.edits.items():
             if field in ("title", "description", "preconditions", "priority", "setup_manifest"):
                 values[field] = val
+        # "Human edits per generated test" (CLAUDE.md product metric) — one
+        # review action with a non-empty edits payload counts as one edit,
+        # regardless of how many fields it touched.
+        values["edit_count"] = TestCard.edit_count + 1
 
     await session.execute(
         update(TestCard)
