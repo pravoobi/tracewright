@@ -1,6 +1,7 @@
 """Stage 6: Embed chunks at multiple granularities and write to pgvector + tsvector."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import structlog
@@ -42,7 +43,11 @@ async def embed_and_store_chunks(
         return
 
     texts = [c.content for c in chunks]
-    embeddings = embed_texts(texts)
+    # embed_texts is synchronous, CPU-bound (SentenceTransformer.encode()) --
+    # calling it directly would block the entire asyncio event loop for
+    # every tenant's requests during this whole call (and much worse on
+    # first use, while BGE-M3 loads from disk). Offload to a thread instead.
+    embeddings = await asyncio.to_thread(embed_texts, texts)
 
     for chunk, embedding in zip(chunks, embeddings):
         chunk.embedding = embedding

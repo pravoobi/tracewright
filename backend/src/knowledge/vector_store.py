@@ -1,6 +1,7 @@
 """Hybrid search: pgvector cosine similarity + Postgres tsvector keyword matching."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -27,7 +28,12 @@ async def hybrid_search(
     V1 keyword side uses Postgres native full-text (tsvector/ts_rank).
     Upgrade path: ParadeDB pg_search or VectorChord-bm25 for true BM25.
     """
-    query_embedding = embed_texts([query])[0]
+    # embed_texts is synchronous, CPU-bound (SentenceTransformer.encode()) --
+    # calling it directly here would block the entire asyncio event loop for
+    # every tenant's requests, not just this one, for the whole call (and
+    # much worse on first use, while BGE-M3 loads from disk). Offload to a
+    # thread so the loop stays free to serve other requests concurrently.
+    (query_embedding,) = await asyncio.to_thread(embed_texts, [query])
 
     type_filter = ""
     params: dict[str, Any] = {
