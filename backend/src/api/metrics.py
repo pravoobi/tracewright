@@ -3,10 +3,17 @@ review time per artifact, % chunks auto-approved, human edits per generated
 test, locator verification pass rate. All four existed as raw per-row data
 (or, for edits/locator strategy, didn't exist as data at all) with no
 aggregation endpoint anywhere until now.
+
+compute_tenant_metrics() is the shared core, used by both the API endpoint
+below and the eval harness (backend/evals/run_evals.py) — the harness's own
+module docstring names these same metrics as in-scope, but only ever
+computed classification accuracy; the other three are real, already-solved
+aggregation queries, not a separate eval-specific computation.
 """
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -18,8 +25,7 @@ from backend.src.db.session import get_session
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
-@router.get("/{tenant_id}")
-async def get_metrics(tenant_id: str, session: AsyncSession = Depends(get_session)):
+async def compute_tenant_metrics(session: AsyncSession, tenant_id: str) -> dict[str, Any]:
     tid = uuid.UUID(tenant_id)
 
     # Review time per artifact — median, not average: a handful of very
@@ -93,3 +99,8 @@ async def get_metrics(tenant_id: str, session: AsyncSession = Depends(get_sessio
             "role_based": role_count,
         },
     }
+
+
+@router.get("/{tenant_id}")
+async def get_metrics(tenant_id: str, session: AsyncSession = Depends(get_session)):
+    return await compute_tenant_metrics(session, tenant_id)

@@ -4,10 +4,15 @@ Run: uv run python -m backend.evals.run_evals
 
 Metrics:
 - Classification accuracy vs hand-labeled golden set
-- % ACs producing a passing generated test with zero human edits (manual gate)
-- Human edits per generated test (tracked via review_duration_ms + edit diffs)
-- Locator verification pass rate
-- Chunk classification accuracy
+- Chunk auto-approval rate, human edits per generated test, and locator
+  verification pass rate — reused from backend/src/api/metrics.py's
+  compute_tenant_metrics() rather than recomputed here, since these are
+  real aggregation queries the product already runs, not eval-specific
+  logic. Reported against DEV_TENANT_ID, so they reflect whatever's
+  actually in the local dev database, not the golden set specifically.
+- % ACs producing a passing generated test with zero human edits (manual
+  gate — needs the generated Playwright tests actually run, not
+  automated here)
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ log = structlog.get_logger()
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 LABELS_FILE = GOLDEN_DIR / "labels.json"
+DEV_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def load_golden_labels() -> list[dict[str, Any]]:
@@ -68,6 +74,24 @@ async def eval_classification_accuracy(labels: list[dict[str, Any]]) -> dict[str
     return {"classification_accuracy": accuracy, "correct": correct, "total": total}
 
 
+async def eval_product_metrics(tenant_id: str) -> dict[str, Any]:
+    """Chunk auto-approval rate, human edits per generated test, locator
+    verification pass rate — real, already-computed aggregation queries
+    (backend/src/api/metrics.py), not a separate eval-only calculation.
+    Reflects whatever's actually in the local dev database."""
+    from backend.src.api.metrics import compute_tenant_metrics
+    from backend.src.db.session import async_session_factory
+
+    async with async_session_factory() as session:
+        metrics = await compute_tenant_metrics(session, tenant_id)
+
+    return {
+        "chunk_auto_approval_rate": metrics["chunk_auto_approval_rate"],
+        "human_edit_rate": metrics["human_edits"]["edit_rate"],
+        "locator_verification_pass_rate": metrics["locator_verification"]["pass_rate"],
+    }
+
+
 async def main() -> None:
     labels = load_golden_labels()
     results: dict[str, Any] = {}
@@ -75,9 +99,18 @@ async def main() -> None:
     classification = await eval_classification_accuracy(labels)
     results.update(classification)
 
+    product_metrics = await eval_product_metrics(DEV_TENANT_ID)
+    results.update(product_metrics)
+
     print("\n=== Eval Results ===")
     for k, v in results.items():
         print(f"  {k}: {v}")
+
+    print(
+        "\nNOTE: % ACs producing a passing generated test with zero human "
+        "edits is a manual gate — it needs the generated Playwright tests "
+        "actually run, not automated here."
+    )
 
     # Gate: fail if accuracy drops below 0.80
     accuracy = results.get("classification_accuracy", 1.0)
