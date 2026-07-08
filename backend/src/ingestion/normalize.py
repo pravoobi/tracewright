@@ -53,6 +53,8 @@ async def normalize(
     doc_version: str,
     existing_chunks: list[dict[str, Any]] | None = None,
     auto_approve_threshold: float | None = None,
+    diff_by_block_idx: dict[int, Any] | None = None,
+    prior_by_logical_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[NormalizedChunk]:
     from backend.src.config import settings
 
@@ -63,15 +65,43 @@ async def normalize(
     # back when the caller genuinely passed nothing.
     threshold = auto_approve_threshold if auto_approve_threshold is not None else settings.confidence_auto_approve_threshold
 
-    # Classify all blocks in one async batch
-    classifications = await classify_blocks(doc.blocks, tenant_id=tenant_id)
+    # On a re-upload, unchanged blocks reuse their prior chunk's
+    # classification and review decision instead of being re-classified —
+    # saves a real LLM call per unchanged block, and (more importantly)
+    # doesn't discard a human reviewer's prior approve/reject decision on
+    # content that hasn't actually changed.
+    diff_by_block_idx = diff_by_block_idx or {}
+    prior_by_logical_id = prior_by_logical_id or {}
+
+    # Computed once, reused by both the classify-skip pass below and the
+    # main pass — must stay a single source of truth, since disagreement
+    # between the two would mean a block skipped here has nothing to fall
+    # back on in the main pass.
+    reused_by_idx: dict[int, dict[str, Any]] = {}
+    for idx in range(len(doc.blocks)):
+        diff = diff_by_block_idx.get(idx)
+        if diff is not None and diff.status == "unchanged":
+            prior = prior_by_logical_id.get(diff.logical_id)
+            if prior is not None:
+                reused_by_idx[idx] = prior
+
+    blocks_to_classify = [b for idx, b in enumerate(doc.blocks) if idx not in reused_by_idx]
+    classify_idx_map = [idx for idx in range(len(doc.blocks)) if idx not in reused_by_idx]
+
+    classifications = await classify_blocks(blocks_to_classify, tenant_id=tenant_id)
+    classification_by_idx = dict(zip(classify_idx_map, classifications))
 
     chunks: list[NormalizedChunk] = []
     ordinal_by_section: dict[str, int] = {}
 
-    for idx, (block, (chunk_type, confidence, example_of)) in enumerate(
-        zip(doc.blocks, classifications)
-    ):
+    for idx, block in enumerate(doc.blocks):
+        reused = reused_by_idx.get(idx)
+
+        if reused is not None:
+            chunk_type, confidence, example_of = reused["chunk_type"], reused["confidence"], None
+        else:
+            chunk_type, confidence, example_of = classification_by_idx[idx]
+
         if chunk_type == "out_of_scope":
             continue
 
@@ -81,15 +111,16 @@ async def normalize(
             doc_version, section_path, ordinal_by_section[section_path]
         )
 
-        # Content-based logical_id: stable across versions
-        logical_id = (
-            match_to_existing(block.content, existing_chunks or [])
-            or mint_logical_id(block.content)
-        )
-
-        review_status = (
-            "auto_approved" if confidence >= threshold else "pending"
-        )
+        if reused is not None:
+            logical_id = reused["logical_id"]
+            review_status = reused["review_status"]
+        else:
+            # Content-based logical_id: stable across versions
+            logical_id = (
+                match_to_existing(block.content, existing_chunks or [])
+                or mint_logical_id(block.content)
+            )
+            review_status = "auto_approved" if confidence >= threshold else "pending"
 
         metadata: dict[str, Any] = {}
         if example_of:
@@ -118,5 +149,6 @@ async def normalize(
         total=len(chunks),
         auto_approved=sum(1 for c in chunks if c.review_status == "auto_approved"),
         pending=sum(1 for c in chunks if c.review_status == "pending"),
+        reused_unchanged=len(reused_by_idx),
     )
     return chunks

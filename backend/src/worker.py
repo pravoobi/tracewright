@@ -9,6 +9,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 
 from backend.src.config import settings
+from backend.src.versioning.diff import ChunkDiff
 
 log = structlog.get_logger()
 
@@ -83,14 +84,81 @@ async def parse_artifact(
     structured = recover_structure(layout)
 
     async with async_session_factory() as session:
+        artifact = await session.get(SourceArtifact, uuid.UUID(artifact_id))
+        doc_version = artifact.version if artifact else "1.0"
+
         existing = await _fetch_existing_chunks(session, tenant_id)
+
+        # Version diffing: only meaningful against a PRIOR version of this
+        # SAME document (same filename), not the tenant-wide identity pool
+        # `existing` draws from — diffing against unrelated documents would
+        # flag every one of their chunks as spuriously "removed".
+        prior_chunks = await _fetch_prior_version_chunks(
+            session, tenant_id, filename, artifact_id
+        )
+        diff_by_block_idx: dict[int, ChunkDiff] | None = None
+        prior_by_logical_id: dict[str, dict] = {}
+        diff_summary: dict[str, int] = {}
+        if prior_chunks:
+            from backend.src.versioning.diff import diff_document_versions
+
+            prior_by_logical_id = {c["logical_id"]: c for c in prior_chunks}
+            new_raw = [b.content for b in structured.blocks]
+            diffs = diff_document_versions(prior_chunks, new_raw)
+            # diff_document_versions emits one entry per new_raw item, in
+            # the same order, THEN appends "removed" entries for anything
+            # in prior_chunks that didn't match — so the first len(new_raw)
+            # entries align 1:1 with structured.blocks by index.
+            diff_by_block_idx = {i: d for i, d in enumerate(diffs[: len(new_raw)])}
+            removed = [d for d in diffs if d.status == "removed"]
+            if removed:
+                deprecated_cards = await _deprecate_removed_chunks(
+                    session, tenant_id, removed, doc_version
+                )
+                diff_summary["deprecated_test_cards"] = deprecated_cards
+                diff_summary["removed"] = len(removed)
+
         chunks = await normalize(
             structured,
             artifact_id=artifact_id,
             tenant_id=tenant_id,
-            doc_version="1.0",
+            doc_version=doc_version,
             existing_chunks=existing,
+            diff_by_block_idx=diff_by_block_idx,
+            prior_by_logical_id=prior_by_logical_id,
         )
+
+        if prior_chunks:
+            # Recomputed from the actual PERSISTED chunks rather than the
+            # raw per-block diff — the raw diff counts every block
+            # (headings, document-control text, anything out_of_scope) as
+            # "new" the moment it isn't in prior_chunks, since prior_chunks
+            # only ever contained real, previously-persisted chunks. That
+            # inflates "new" with blocks that were never chunks in the
+            # first place and still won't be after classification.
+            unchanged = modified = new = 0
+            for c in chunks:
+                prior = prior_by_logical_id.get(c.logical_id)
+                if prior is None:
+                    new += 1
+                elif prior["content"].strip().lower() == c.content.strip().lower():
+                    unchanged += 1
+                else:
+                    modified += 1
+            diff_summary["unchanged"] = unchanged
+            diff_summary["modified"] = modified
+            diff_summary["new"] = new
+            diff_summary.setdefault("removed", 0)
+
+        if diff_summary:
+            metadata = dict(artifact.metadata_ or {}) if artifact else {}
+            metadata["diff_summary"] = diff_summary
+            await session.execute(
+                update(SourceArtifact)
+                .where(SourceArtifact.id == uuid.UUID(artifact_id))
+                .values(metadata_=metadata)
+            )
+            log.info("worker.diff_summary", artifact_id=artifact_id, **diff_summary)
 
         # Persist chunks
         chunk_models = []
@@ -214,6 +282,94 @@ async def _fetch_existing_chunks(session: Any, tenant_id: str) -> list[dict]:
         )
     )
     return [{"logical_id": row.logical_id, "content": row.content} for row in result.all()]
+
+
+async def _fetch_prior_version_chunks(
+    session: Any, tenant_id: str, filename: str, current_artifact_id: str
+) -> list[dict]:
+    """Chunks from the tenant's most recent PRIOR artifact with the same
+    filename — the actual lineage to diff against, as opposed to
+    _fetch_existing_chunks's tenant-wide pool (used for identity matching,
+    where a chunk moving between documents is still a legitimate match).
+    Diffing against unrelated documents would flag every one of their
+    chunks as spuriously "removed"."""
+    from backend.src.db.models import Chunk, SourceArtifact
+    from sqlalchemy import select
+
+    prior_artifact_id = await session.scalar(
+        select(SourceArtifact.id)
+        .where(
+            SourceArtifact.tenant_id == uuid.UUID(tenant_id),
+            SourceArtifact.filename == filename,
+            SourceArtifact.id != uuid.UUID(current_artifact_id),
+            SourceArtifact.status == "processed",
+        )
+        .order_by(SourceArtifact.uploaded_at.desc())
+        .limit(1)
+    )
+    if prior_artifact_id is None:
+        return []
+
+    result = await session.execute(
+        select(Chunk.logical_id, Chunk.content, Chunk.chunk_type, Chunk.confidence, Chunk.review_status)
+        .where(Chunk.artifact_id == prior_artifact_id)
+    )
+    return [
+        {
+            "logical_id": row.logical_id,
+            "content": row.content,
+            "chunk_type": row.chunk_type,
+            "confidence": row.confidence,
+            "review_status": row.review_status,
+        }
+        for row in result.all()
+    ]
+
+
+async def _deprecate_removed_chunks(
+    session: Any, tenant_id: str, removed: list[ChunkDiff], doc_version: str
+) -> list[str]:
+    """CLAUDE.md: "removed sections deprecate linked tests." Sets
+    deprecated_in_version on any test_card linked to a chunk that no
+    longer exists in this document version — test filtering already
+    excludes deprecated cards at or past that version, so this is a real,
+    load-bearing signal, not cosmetic. Returns the test_ids touched, for
+    logging/visibility rather than silently mutating them."""
+    from sqlalchemy import select, update
+
+    from backend.src.db.models import TestCard, TraceabilityLink
+
+    removed_logical_ids = [d.logical_id for d in removed]
+    result = await session.execute(
+        select(TraceabilityLink.test_card_id)
+        .where(
+            TraceabilityLink.tenant_id == uuid.UUID(tenant_id),
+            TraceabilityLink.linked_type == "chunk",
+            TraceabilityLink.linked_logical_id.in_(removed_logical_ids),
+        )
+        .distinct()
+    )
+    card_ids = [row[0] for row in result.all()]
+    if not card_ids:
+        return []
+
+    test_ids = await session.scalars(
+        select(TestCard.test_id).where(TestCard.id.in_(card_ids))
+    )
+    test_ids_list = list(test_ids)
+
+    await session.execute(
+        update(TestCard)
+        .where(TestCard.id.in_(card_ids), TestCard.deprecated_in_version.is_(None))
+        .values(deprecated_in_version=doc_version)
+    )
+    log.warning(
+        "worker.test_cards_deprecated",
+        test_ids=test_ids_list,
+        removed_logical_ids=removed_logical_ids,
+        doc_version=doc_version,
+    )
+    return test_ids_list
 
 
 async def _set_status(artifact_id: str, status: str) -> None:

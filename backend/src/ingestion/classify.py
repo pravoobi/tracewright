@@ -51,6 +51,19 @@ async def classify_block(block: Block, tenant_id: str | None = None) -> tuple[st
             max_tokens=128,
         )
         parsed = extract_json_object(raw)
+        # extract_json_object parses whatever the first valid JSON value is —
+        # a Haiku-class model occasionally wraps its response in a list
+        # (e.g. `[{"type": ...}]`) instead of a bare object. That isn't a
+        # parse failure extract_json_object can catch (it IS valid JSON),
+        # so it has to be handled here rather than relying on the except
+        # clause below.
+        if not isinstance(parsed, dict):
+            log.warning(
+                "classify.unexpected_shape",
+                parsed_type=type(parsed).__name__,
+                content_preview=block.content[:100],
+            )
+            return "unknown", 0.3, None
         chunk_type = parsed.get("type", "unknown")
         if chunk_type not in VALID_TYPES:
             chunk_type = "unknown"
