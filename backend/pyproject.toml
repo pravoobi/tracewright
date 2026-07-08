@@ -28,7 +28,7 @@ dependencies = [
     "pandas>=2.2.3",
     # LLM + observability
     "litellm>=1.57.0",
-    "langfuse>=3.0.0",
+    "langfuse>=2.0.0,<3.0.0",
     "anthropic>=0.40.0",
     # Embeddings
     "sentence-transformers>=3.3.1",
