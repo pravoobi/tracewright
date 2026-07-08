@@ -8,6 +8,7 @@ from typing import Any
 import structlog
 
 from backend.src.ingestion.classify import classify_blocks
+from backend.src.ingestion.confidence import compute_chunk_confidence
 from backend.src.ingestion.identity import match_to_existing, mint_logical_id
 from backend.src.ingestion.structure import Block, StructuredDocument
 
@@ -91,6 +92,14 @@ async def normalize(
     classifications = await classify_blocks(blocks_to_classify, tenant_id=tenant_id)
     classification_by_idx = dict(zip(classify_idx_map, classifications))
 
+    # Blocks with an unresolved "see section X.Y" cross-reference — one of
+    # compute_chunk_confidence's inputs, alongside OCR/table confidence
+    # already tracked per-block (Block.confidence) but never previously
+    # combined into the chunk's final confidence score.
+    unresolved_xref_idxs = {
+        ref["source_block_idx"] for ref in doc.cross_references if not ref["resolved"]
+    }
+
     chunks: list[NormalizedChunk] = []
     ordinal_by_section: dict[str, int] = {}
 
@@ -98,9 +107,17 @@ async def normalize(
         reused = reused_by_idx.get(idx)
 
         if reused is not None:
+            # Already a final, combined confidence from a prior run —
+            # recomputing would double-apply the OCR/table/xref penalties.
             chunk_type, confidence, example_of = reused["chunk_type"], reused["confidence"], None
         else:
-            chunk_type, confidence, example_of = classification_by_idx[idx]
+            chunk_type, classification_confidence, example_of = classification_by_idx[idx]
+            confidence = compute_chunk_confidence(
+                classification_confidence=classification_confidence,
+                ocr_confidence=block.confidence if block.metadata.get("needs_ocr_review") else 1.0,
+                table_confidence=block.confidence if block.block_type == "table" else 1.0,
+                has_unresolved_xrefs=idx in unresolved_xref_idxs,
+            )
 
         if chunk_type == "out_of_scope":
             continue
