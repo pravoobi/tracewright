@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ from backend.src.config import settings
 from backend.src.knowledge.retrieval import retrieve_for_planning
 from backend.src.llm.client import complete, extract_json_object
 from backend.src.llm.langfuse_tracer import trace
+
+_SAFE_TEST_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 log = structlog.get_logger()
 
@@ -141,7 +144,16 @@ async def persist_plan(
         else:
             approval_status = "pending"
 
+        # test_id comes from the Planner LLM's JSON output, which a
+        # malicious uploaded document could steer via prompt injection.
+        # It later gets interpolated into a generated test's output
+        # filename (codegen.py's safe_filename) -- reject anything outside
+        # a safe charset here, at the point of persistence, rather than
+        # only sanitizing downstream at the point of use.
         test_id = card["test_id"]
+        if not _SAFE_TEST_ID.match(test_id):
+            log.warning("planner.unsafe_test_id_rejected", raw=test_id)
+            test_id = f"TC-{uuid.uuid4().hex[:8]}"
         if test_id in used_ids:
             base, suffix = test_id, 2
             while test_id in used_ids:

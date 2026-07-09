@@ -8,7 +8,7 @@ import litellm
 import structlog
 
 from backend.src.config import settings
-from backend.src.llm.cost import check_tenant_budget, record_llm_call
+from backend.src.llm.cost import budget_guard, record_llm_call
 
 log = structlog.get_logger()
 
@@ -42,28 +42,26 @@ async def complete(
     """Single-turn completion. Model is swappable via config — never wire SDK calls directly."""
     resolved_model = model or settings.planner_model
 
-    if tenant_id:
-        await check_tenant_budget(tenant_id)
+    async with budget_guard(tenant_id):
+        started = time.monotonic()
 
-    started = time.monotonic()
+        response = await litellm.acompletion(
+            model=resolved_model,
+            messages=messages,
+            **kwargs,
+        )
 
-    response = await litellm.acompletion(
-        model=resolved_model,
-        messages=messages,
-        **kwargs,
-    )
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        usage = response.usage  # type: ignore[union-attr]
 
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    usage = response.usage  # type: ignore[union-attr]
-
-    await record_llm_call(
-        tenant_id=tenant_id,
-        feature=feature,
-        model=resolved_model,
-        input_tokens=usage.prompt_tokens if usage else 0,
-        output_tokens=usage.completion_tokens if usage else 0,
-        latency_ms=elapsed_ms,
-    )
+        await record_llm_call(
+            tenant_id=tenant_id,
+            feature=feature,
+            model=resolved_model,
+            input_tokens=usage.prompt_tokens if usage else 0,
+            output_tokens=usage.completion_tokens if usage else 0,
+            latency_ms=elapsed_ms,
+        )
 
     content = response.choices[0].message.content  # type: ignore[union-attr]
     log.debug("llm.complete", model=resolved_model, feature=feature, latency_ms=elapsed_ms)

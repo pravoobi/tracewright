@@ -3,16 +3,22 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import Environment, SourceArtifact
 from backend.src.db.session import get_session
 
-router = APIRouter(prefix="/environments", tags=["environments"])
+router = APIRouter(
+    prefix="/environments",
+    tags=["environments"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 
 class CreateEnvironmentRequest(BaseModel):
@@ -29,6 +35,16 @@ async def create_environment(
     body: CreateEnvironmentRequest,
     session: AsyncSession = Depends(get_session),
 ):
+    # env.url becomes the trusted origin that build_registry (generator.py)
+    # constrains caller-supplied flow URLs to, and it's loaded into a
+    # server-side Playwright browser with decrypted auth cookies -- reject
+    # anything that isn't a plain http(s) URL here (e.g. file://, javascript:)
+    # rather than letting a bad scheme in at the one place we could catch it.
+    if body.url is not None and urlparse(body.url).scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=400, detail="Environment URL must use http or https"
+        )
+
     env = Environment(
         tenant_id=uuid.UUID(tenant_id),
         name=body.name,

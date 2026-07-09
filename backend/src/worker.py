@@ -79,6 +79,14 @@ async def parse_artifact(
         log.error("worker.password_protected", artifact_id=artifact_id)
         await _set_status(artifact_id, "error_password_protected")
         return
+    if triage.is_oversized:
+        # triage_document already computed this (Stage 1) but nothing ever
+        # checked it -- an oversized doc silently proceeded through the full
+        # LLM-classification pipeline (Stage 4), burning the tenant's LLM
+        # budget on a document CLAUDE.md says should be rejected outright.
+        log.error("worker.oversized", artifact_id=artifact_id, total_pages=triage.total_pages)
+        await _set_status(artifact_id, "error_oversized")
+        return
 
     layout = extract_layout(filename, data, triage)
     structured = recover_structure(layout)

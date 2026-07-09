@@ -84,5 +84,12 @@ def _build_metadata_header(card: dict[str, Any]) -> str:
 
 
 def safe_filename(test_id: str, title: str) -> str:
+    """test_id originates from the Planner LLM's JSON output, which is
+    steerable via prompt injection in an uploaded document — it was
+    previously interpolated into the output path with no sanitization at
+    all, so a test_id like "..\\..\\x" would write outside the tests
+    directory. Whitelist to the same safe charset the title slug already
+    used, rather than trusting LLM output to stay well-formed."""
+    safe_test_id = re.sub(r"[^\w-]", "", test_id.lower()) or "test"
     slug = re.sub(r"[^\w\s-]", "", title.lower()).strip().replace(" ", "-")[:40]
-    return f"{test_id.lower()}-{slug}.spec.ts"
+    return f"{safe_test_id}-{slug}.spec.ts"

@@ -39,6 +39,11 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     # Declared ordered list of version strings — customers set this once
     version_ordering: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    # SHA-256 of the tenant's API key. Fast hash is correct here (unlike a
+    # password): the key is a high-entropy random token, not something a
+    # human chose, so slow/salted hashing buys nothing and a fast hash lets
+    # every request look this up cheaply.
+    api_key_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

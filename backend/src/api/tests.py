@@ -11,11 +11,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.agents.healer import heal_frequency_30d, heal_test
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import TestCard, TestResult, TestRun
 from backend.src.db.session import get_session
 from backend.src.versioning.filtering import is_applicable
 
-router = APIRouter(prefix="/tests", tags=["tests"])
+router = APIRouter(
+    prefix="/tests",
+    tags=["tests"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 _TEST_ID_PATTERN = re.compile(r"\bTC-[\w-]+\b")

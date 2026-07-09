@@ -5,21 +5,31 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.agents.planner import generate_test_plan, persist_plan
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import TestCard
 from backend.src.db.session import get_session
 
-router = APIRouter(prefix="/plans", tags=["plans"])
+router = APIRouter(
+    prefix="/plans",
+    tags=["plans"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 
 class GeneratePlanRequest(BaseModel):
     feature_area: str
     doc_version: str
-    top_k: int = 15
+    # Unbounded top_k let a caller balloon a single Planner call's retrieved-
+    # chunk count arbitrarily -- context size (and $ cost, uncapped by the
+    # per-tenant budget check until AFTER the call completes) scales directly
+    # with it. 50 comfortably covers legitimate feature-area queries per the
+    # retrieval design (top_k=15 default).
+    top_k: int = Field(default=15, ge=1, le=50)
 
 
 class ReviewCardAction(BaseModel):

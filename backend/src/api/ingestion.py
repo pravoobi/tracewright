@@ -10,10 +10,15 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import Chunk, SourceArtifact
 from backend.src.db.session import get_session
 
-router = APIRouter(prefix="/ingestion", tags=["ingestion"])
+router = APIRouter(
+    prefix="/ingestion",
+    tags=["ingestion"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 
 class ReviewAction(BaseModel):

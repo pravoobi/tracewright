@@ -2,11 +2,24 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import axios from "axios";
 import { IngestionReview } from "./pages/IngestionReview";
 import { PlannerReview } from "./pages/PlannerReview";
 import { EnvironmentDashboard } from "./pages/EnvironmentDashboard";
 import { TestCatalog } from "./pages/TestCatalog";
 import "./index.css";
+
+// Every backend router requires X-API-Key (see backend/src/auth/api_key.py).
+// Set once, globally, rather than threading it through every axios call in
+// every page/component.
+const apiKey = import.meta.env.VITE_TENANT_API_KEY;
+if (apiKey) {
+  axios.defaults.headers.common["X-API-Key"] = apiKey;
+} else {
+  console.warn(
+    "VITE_TENANT_API_KEY is not set — all API requests will fail with 401."
+  );
+}
 
 const qc = new QueryClient();
 

@@ -19,10 +19,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import Chunk, TestCard
 from backend.src.db.session import get_session
 
-router = APIRouter(prefix="/metrics", tags=["metrics"])
+router = APIRouter(
+    prefix="/metrics",
+    tags=["metrics"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 
 async def compute_tenant_metrics(session: AsyncSession, tenant_id: str) -> dict[str, Any]:

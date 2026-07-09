@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Confidence thresholds
     confidence_auto_approve_threshold: float = Field(default=0.85)
 
+    # Upload endpoint had no size limit at all -- an unauthenticated-in-effect
+    # (pre-finding-#1) or even authenticated caller could upload arbitrarily
+    # large files, read fully into memory in upload.py, and exhaust RAM/disk.
+    max_upload_size_bytes: int = Field(default=50 * 1024 * 1024)  # 50 MB
+
     # Per-tenant LLM cost guard (USD/day; 0 = unlimited)
     default_tenant_daily_llm_budget_usd: float = Field(default=0.0)
 

@@ -21,13 +21,18 @@ from minio.error import S3Error
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.auth.api_key import require_tenant_access
 from backend.src.db.models import Environment, TestCard
 from backend.src.db.session import get_session
 
 if TYPE_CHECKING:
     from backend.src.agents.generator.app_model import AppModelRegistry
 
-router = APIRouter(prefix="/generator", tags=["generator"])
+router = APIRouter(
+    prefix="/generator",
+    tags=["generator"],
+    dependencies=[Depends(require_tenant_access)],
+)
 
 # Fallback registry for the existing demo/eval setup, which predates
 # per-environment MinIO storage — the new build-registry endpoint always
@@ -123,6 +128,8 @@ async def build_registry(
 ):
     """Phase 1: walk the given flows against the live environment, verifying
     every locator, and persist the resulting page-object registry."""
+    from urllib.parse import urlparse
+
     from backend.src.agents.generator.app_model import build_app_model
     from backend.src.storage.files import registry_path, upload_file
 
@@ -131,6 +138,25 @@ async def build_registry(
         raise HTTPException(status_code=404, detail="Environment not found")
     if not env.url:
         raise HTTPException(status_code=400, detail="Environment has no URL configured")
+
+    # This endpoint drives a server-side Playwright browser, loaded with the
+    # environment's decrypted auth cookies, to whatever URL a flow gives it.
+    # Without this check, a caller could point that authenticated browser at
+    # any internal/intranet/metadata URL via test_card_flows, independent of
+    # what the environment is actually registered for (SSRF). Every flow's
+    # URL must share the environment's own registered origin -- the one
+    # thing the customer actually vetted when they set up the environment.
+    env_origin = urlparse(env.url)
+    for flow in body.test_card_flows:
+        flow_url = flow.get("url")
+        if not flow_url:
+            continue
+        flow_origin = urlparse(flow_url)
+        if (flow_origin.scheme, flow_origin.netloc) != (env_origin.scheme, env_origin.netloc):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Flow URL '{flow_url}' is not on the environment's registered origin",
+            )
 
     registry = await build_app_model(
         tenant_id=tenant_id,
@@ -224,6 +250,15 @@ async def generate_card_test(
     filename = safe_filename(card.test_id, card.title)
     os.makedirs(_OUTPUT_DIR, exist_ok=True)
     out_path = os.path.join(_OUTPUT_DIR, filename)
+
+    # Defense in depth on top of safe_filename's sanitization: refuse to
+    # write anywhere outside the tests directory, in case some future
+    # change to filename construction reintroduces a traversal path.
+    resolved_dir = os.path.realpath(_OUTPUT_DIR)
+    resolved_path = os.path.realpath(out_path)
+    if os.path.commonpath([resolved_dir, resolved_path]) != resolved_dir:
+        raise HTTPException(status_code=400, detail="Invalid generated filename")
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(code)
 
