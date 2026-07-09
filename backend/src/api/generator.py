@@ -40,6 +40,21 @@ _OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "test-sc
 _STRATEGY_RANK = {"role": 0, "testid": 1, "css_warned": 2}
 
 
+def _referenced_page_properties(code: str) -> list[tuple[str, str]]:
+    """All (class_name, property_name) pairs a generated test actually
+    references through the Page Object Model — `const cartPage = new
+    CartPage(page);` maps the variable to its class, then every
+    `cartPage.<property>` access is one reference. Shared by both
+    locator-strategy inference and suggestion collection below, since both
+    need the exact same "what does this test actually touch" answer."""
+    var_to_class = dict(re.findall(r"const\s+(\w+)\s*=\s*new\s+(\w+)\s*\(", code))
+    refs: list[tuple[str, str]] = []
+    for var_name, class_name in var_to_class.items():
+        for prop_name in re.findall(rf"\b{re.escape(var_name)}\.(\w+)", code):
+            refs.append((class_name, prop_name))
+    return refs
+
+
 def _infer_locator_strategy(code: str, registry: "AppModelRegistry") -> str:
     """Worst-case locator strategy actually used by the generated test.
 
@@ -69,18 +84,30 @@ def _infer_locator_strategy(code: str, registry: "AppModelRegistry") -> str:
         consider("testid")
 
     # Locators referenced through a page object — the actual, intended
-    # pattern. `const cartPage = new CartPage(page);` maps the variable to
-    # its class, then every `cartPage.<property>` reference is looked up
-    # against that class's real per-property strategy in the registry.
-    var_to_class = dict(re.findall(r"const\s+(\w+)\s*=\s*new\s+(\w+)\s*\(", code))
-    for var_name, class_name in var_to_class.items():
+    # pattern.
+    for class_name, prop_name in _referenced_page_properties(code):
         page_obj = registry.pages.get(class_name)
-        if page_obj is None:
-            continue
-        for prop_name in re.findall(rf"\b{re.escape(var_name)}\.(\w+)", code):
+        if page_obj is not None:
             consider(page_obj.locator_strategies.get(prop_name))
 
     return worst
+
+
+def _collect_suggestions(code: str, registry: "AppModelRegistry") -> list[str]:
+    """CLAUDE.md's "recommend adding data-testid to element X" — collected
+    for whichever page-object properties this specific test actually
+    references, deduped, in first-seen order. Was produced by
+    find_verified_locator() since day one but never captured past that
+    point until app_model.py started storing it on the registry."""
+    suggestions: list[str] = []
+    for class_name, prop_name in _referenced_page_properties(code):
+        page_obj = registry.pages.get(class_name)
+        if page_obj is None:
+            continue
+        suggestion = page_obj.suggestions.get(prop_name)
+        if suggestion and suggestion not in suggestions:
+            suggestions.append(suggestion)
+    return suggestions
 
 
 class BuildRegistryRequest(BaseModel):
@@ -192,6 +219,7 @@ async def generate_card_test(
 
     code = await generate_test_file(test_card_dict, registry, tenant_id=tenant_id)
     locator_strategy = _infer_locator_strategy(code, registry)
+    locator_suggestions = _collect_suggestions(code, registry)
 
     filename = safe_filename(card.test_id, card.title)
     os.makedirs(_OUTPUT_DIR, exist_ok=True)
@@ -203,12 +231,17 @@ async def generate_card_test(
     await session.execute(
         update(TestCard)
         .where(TestCard.id == uuid.UUID(card_id))
-        .values(playwright_code_path=relative_path, locator_strategy=locator_strategy)
+        .values(
+            playwright_code_path=relative_path,
+            locator_strategy=locator_strategy,
+            locator_suggestions=locator_suggestions,
+        )
     )
     await session.commit()
 
     return {
         "playwright_code_path": relative_path,
         "locator_strategy": locator_strategy,
+        "locator_suggestions": locator_suggestions,
         "code": code,
     }

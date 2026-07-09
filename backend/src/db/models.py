@@ -154,6 +154,10 @@ class TestCard(Base):
     applicability: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     tier_sources: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     locator_strategy: Mapped[str | None] = mapped_column(Text)
+    # CLAUDE.md's "recommend adding data-testid to element X" — collected
+    # from the registry for whichever page-object properties this specific
+    # test actually references.
+    locator_suggestions: Mapped[list[str]] = mapped_column(JSONB, default=list)
     heal_count: Mapped[int] = mapped_column(Integer, default=0)
     approval_status: Mapped[str] = mapped_column(Text, default="pending")
     approved_by: Mapped[str | None] = mapped_column(Text)

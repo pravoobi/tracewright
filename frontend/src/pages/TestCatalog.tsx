@@ -12,6 +12,8 @@ interface TestCard {
   test_type: string;
   approval_status: string;
   introduced_in_version: string;
+  locator_strategy: string | null;
+  locator_suggestions: string[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -53,7 +55,17 @@ export function TestCatalog() {
           {cards.map((card) => (
             <tr key={card.id} className="border-b hover:bg-gray-50">
               <td className="px-3 py-2 font-mono text-xs text-gray-500">{card.test_id}</td>
-              <td className="px-3 py-2 text-gray-900">{card.title}</td>
+              <td className="px-3 py-2 text-gray-900">
+                {card.title}
+                {card.locator_suggestions.length > 0 && (
+                  <span
+                    className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 cursor-help"
+                    title={card.locator_suggestions.join("\n")}
+                  >
+                    ⚠ fragile locator
+                  </span>
+                )}
+              </td>
               <td className="px-3 py-2">{card.priority}</td>
               <td className="px-3 py-2 text-gray-500">{card.test_type}</td>
               <td className="px-3 py-2">

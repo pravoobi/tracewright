@@ -80,6 +80,8 @@ async def list_cards(
             "setup_manifest": c.setup_manifest,
             "tier_sources": c.tier_sources,
             "introduced_in_version": c.introduced_in_version,
+            "locator_strategy": c.locator_strategy,
+            "locator_suggestions": c.locator_suggestions,
         }
         for c in cards
     ]

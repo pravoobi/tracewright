@@ -19,6 +19,20 @@ class PageObject:
     locators: dict[str, str] = field(default_factory=dict)  # semantic_name → locator_code
     locator_strategies: dict[str, str] = field(default_factory=dict)  # semantic_name → strategy
     warnings: list[str] = field(default_factory=list)
+    # semantic_name → "Add data-testid attribute to element matching X" —
+    # CLAUDE.md's customer-facing recommendation for a css_warned/unresolved
+    # locator. find_verified_locator() has always produced this on
+    # LocatorResult; nothing ever captured it into the registry until now.
+    suggestions: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "url_pattern": self.url_pattern,
+            "locators": self.locators,
+            "locator_strategies": self.locator_strategies,
+            "warnings": self.warnings,
+            "suggestions": self.suggestions,
+        }
 
 
 @dataclass
@@ -26,15 +40,7 @@ class AppModelRegistry:
     pages: dict[str, PageObject] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: {
-                "url_pattern": po.url_pattern,
-                "locators": po.locators,
-                "locator_strategies": po.locator_strategies,
-                "warnings": po.warnings,
-            }
-            for name, po in self.pages.items()
-        }
+        return {name: po.to_dict() for name, po in self.pages.items()}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppModelRegistry":
@@ -46,6 +52,7 @@ class AppModelRegistry:
                 locators=po_data.get("locators", {}),
                 locator_strategies=po_data.get("locator_strategies", {}),
                 warnings=po_data.get("warnings", []),
+                suggestions=po_data.get("suggestions", {}),
             )
         return registry
 
@@ -92,18 +99,25 @@ async def build_app_model(
                         testid_hint=element.get("testid"),
                         css_hint=element.get("css"),
                     )
+                    semantic_name = element.get("semantic_name", element.get("description", "el"))
                     if result.verified:
-                        semantic_name = element.get("semantic_name", element.get("description", "el"))
                         page_obj.locators[semantic_name] = result.locator_code
                         page_obj.locator_strategies[semantic_name] = result.strategy
                         if result.warning:
                             page_obj.warnings.append(result.warning)
+                        if result.suggestion:
+                            page_obj.suggestions[semantic_name] = result.suggestion
                     else:
                         log.warning(
                             "app_model.unresolved_locator",
                             page=page_name,
                             element=element.get("description"),
                         )
+                        # Never emit an unverified locator, but the
+                        # data-testid recommendation is still real and
+                        # actionable even though there's no locator entry.
+                        if result.suggestion:
+                            page_obj.suggestions[semantic_name] = result.suggestion
 
             except Exception as e:
                 log.error("app_model.page_error", page=page_name, url=url, error=str(e))

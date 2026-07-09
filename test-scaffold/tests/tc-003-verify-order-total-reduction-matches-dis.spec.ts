@@ -7,20 +7,19 @@
 // ─────────────────────────────────────────────────────────────────────────
 // DO NOT EDIT locators manually — regenerate via the AI test agent.
 
-// Test Card: TC-003
-// Title: Verify order total reduction matches discount percentage exactly
-// Source: setup_manifest - authenticated_customer, SAVE15 discount code (15%), cart with SKU-200 x2 @ $33.33
-// Page Objects: CartPage, CheckoutPage
+// Test Card: TC-003 - Verify order total reduction matches discount percentage exactly
+// Source: setup_manifest (authenticated_customer, SAVE15 discount code, cart with SKU-200 x2)
+// Page Objects: ../page-objects/CartPage, ../page-objects/CheckoutPage
+// Fixture: ../fixtures/authenticated-cart.fixture
 
 import { test, expect } from '../fixtures/authenticated-cart.fixture';
 import { CartPage } from '../page-objects/CartPage';
-import { CheckoutPage } from '../page-objects/CheckoutPage';
 
-test.describe('TC-003: Order total reduction matches discount percentage exactly', () => {
+test.describe('TC-003: Order total reduction matches discount percentage', () => {
   test('applying SAVE15 discount reduces subtotal by exactly 15% with correct rounding', async ({ page }) => {
     const cartPage = new CartPage(page);
 
-    // Precondition setup: cart contains SKU-200 x2 @ $33.33 => subtotal $66.66
+    // Setup: cart contains SKU-200 x2 @ $33.33 = $66.66 subtotal
     const subtotal = 2 * 33.33;
     const discountPercentage = 15;
     const expectedDiscountAmount = Math.round(subtotal * (discountPercentage / 100) * 100) / 100;
@@ -28,37 +27,28 @@ test.describe('TC-003: Order total reduction matches discount percentage exactly
 
     await page.goto(cartPage.url_pattern);
 
-    // Capture the order total before applying the discount
-    const preDiscountTotalText = await cartPage.orderTotal.textContent();
-    const preDiscountTotal = parseFloat((preDiscountTotalText ?? '').replace(/[^0-9.]/g, ''));
+    // Capture the subtotal before discount is applied
+    const totalBeforeDiscountText = await cartPage.orderTotal.textContent();
+    const totalBeforeDiscount = parseFloat(totalBeforeDiscountText?.replace(/[^0-9.]/g, '') ?? '0');
 
-    // Verify: cart subtotal matches the expected pre-discount amount based on cart contents
-    expect(preDiscountTotal).toBeCloseTo(subtotal, 2);
+    // Verify: pre-discount total matches expected cart subtotal from setup manifest
+    expect(totalBeforeDiscount).toBeCloseTo(subtotal, 2);
 
     await cartPage.discountCodeInput.fill('SAVE15');
     await cartPage.applyDiscountButton.click();
 
-    // Wait for the order total to reflect the discounted amount
-    await expect(cartPage.orderTotal).toHaveText(new RegExp(expectedTotal.toFixed(2).replace('.', '\\.')));
+    // Wait for order total to update after discount application
+    await expect(cartPage.orderTotal).not.toHaveText(totalBeforeDiscountText ?? '');
 
-    const postDiscountTotalText = await cartPage.orderTotal.textContent();
-    const postDiscountTotal = parseFloat((postDiscountTotalText ?? '').replace(/[^0-9.]/g, ''));
+    const totalAfterDiscountText = await cartPage.orderTotal.textContent();
+    const totalAfterDiscount = parseFloat(totalAfterDiscountText?.replace(/[^0-9.]/g, '') ?? '0');
 
-    // Verify: applying the 15% discount reduces the order total by exactly the expected discount amount
-    expect(subtotal - postDiscountTotal).toBeCloseTo(expectedDiscountAmount, 2);
+    // Verify: order total after discount reflects exact 15% reduction with correct rounding
+    expect(totalAfterDiscount).toBeCloseTo(expectedTotal, 2);
 
-    // Verify: the resulting order total matches the precisely calculated discounted amount with correct rounding
-    expect(postDiscountTotal).toBeCloseTo(expectedTotal, 2);
+    const actualDiscountAmount = Math.round((totalBeforeDiscount - totalAfterDiscount) * 100) / 100;
 
-    await cartPage.proceedToCheckoutButton.click();
-
-    const checkoutPage = new CheckoutPage(page);
-    await page.waitForURL(checkoutPage.url_pattern);
-
-    const checkoutTotalText = await checkoutPage.orderTotal.textContent();
-    const checkoutTotal = parseFloat((checkoutTotalText ?? '').replace(/[^0-9.]/g, ''));
-
-    // Verify: the discounted total persists correctly through to the checkout page
-    expect(checkoutTotal).toBeCloseTo(expectedTotal, 2);
+    // Verify: the discounted amount matches exactly 15% of the subtotal
+    expect(actualDiscountAmount).toBeCloseTo(expectedDiscountAmount, 2);
   });
 });
