@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from minio.error import S3Error
@@ -22,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.db.models import Environment, TestCard
 from backend.src.db.session import get_session
+
+if TYPE_CHECKING:
+    from backend.src.agents.generator.app_model import AppModelRegistry
 
 router = APIRouter(prefix="/generator", tags=["generator"])
 
@@ -33,17 +37,50 @@ _FALLBACK_REGISTRY_PATH = os.path.join(
 )
 _OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "test-scaffold", "tests")
 
+_STRATEGY_RANK = {"role": 0, "testid": 1, "css_warned": 2}
 
-def _infer_locator_strategy(code: str) -> str:
-    """Worst-case strategy actually present in the generated file — a raw
-    CSS fallback anywhere in the file makes the whole test that fragile,
-    regardless of how many other locators used the preferred role-based
-    approach."""
+
+def _infer_locator_strategy(code: str, registry: "AppModelRegistry") -> str:
+    """Worst-case locator strategy actually used by the generated test.
+
+    Following the Page Object Model (CLAUDE.md's mandated pattern), a test
+    virtually never calls page.getByRole/getByTestId/locator directly —
+    it calls `cartPage.orderTotal`, and the REAL locator lives inside the
+    page-object CLASS (test-scaffold/page-objects/CartPage.ts), not the
+    test body. Scanning only the test file's own code (the original,
+    incorrect version of this function) means the "role" fallback fires
+    for every POM-based test regardless of what its page objects actually
+    resolve to — confirmed wrong in practice: CartPage.ts's `orderTotal`
+    and `discountSummary` are both real css_warned locators, yet every
+    test referencing them was silently tagged "role".
+    """
+    worst = "role"
+
+    def consider(strategy: str | None) -> None:
+        nonlocal worst
+        if strategy and _STRATEGY_RANK.get(strategy, 0) > _STRATEGY_RANK[worst]:
+            worst = strategy
+
+    # Locators inlined directly in the test body (not the intended
+    # pattern, but a test could bypass the page-object layer)
     if "page.locator(" in code:
-        return "css_warned"
+        consider("css_warned")
     if "getByTestId(" in code:
-        return "testid"
-    return "role"
+        consider("testid")
+
+    # Locators referenced through a page object — the actual, intended
+    # pattern. `const cartPage = new CartPage(page);` maps the variable to
+    # its class, then every `cartPage.<property>` reference is looked up
+    # against that class's real per-property strategy in the registry.
+    var_to_class = dict(re.findall(r"const\s+(\w+)\s*=\s*new\s+(\w+)\s*\(", code))
+    for var_name, class_name in var_to_class.items():
+        page_obj = registry.pages.get(class_name)
+        if page_obj is None:
+            continue
+        for prop_name in re.findall(rf"\b{re.escape(var_name)}\.(\w+)", code):
+            consider(page_obj.locator_strategies.get(prop_name))
+
+    return worst
 
 
 class BuildRegistryRequest(BaseModel):
@@ -154,7 +191,7 @@ async def generate_card_test(
     }
 
     code = await generate_test_file(test_card_dict, registry, tenant_id=tenant_id)
-    locator_strategy = _infer_locator_strategy(code)
+    locator_strategy = _infer_locator_strategy(code, registry)
 
     filename = safe_filename(card.test_id, card.title)
     os.makedirs(_OUTPUT_DIR, exist_ok=True)
