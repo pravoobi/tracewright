@@ -22,13 +22,11 @@ export class CartPage extends BasePage {
     return this.page.getByRole("button", { name: "Proceed to checkout" });
   }
 
-  // css_warned strategy — no stable role/name on this element, flagged for a data-testid
   get orderTotal() {
-    return this.page.locator("#order-total");
+    return this.page.getByTestId("order-total");
   }
 
-  // css_warned strategy — no stable role/name on this element, flagged for a data-testid
   get discountSummary() {
-    return this.page.locator('dt:has-text("Discount")');
+    return this.page.getByTestId("discount-summary");
   }
 }

@@ -14,8 +14,7 @@ export class CheckoutPage extends BasePage {
     return this.page.getByRole("button", { name: "Place order" });
   }
 
-  // css_warned strategy — no stable role/name on this element, flagged for a data-testid
   get orderTotal() {
-    return this.page.locator("#order-total");
+    return this.page.getByTestId("order-total");
   }
 }
