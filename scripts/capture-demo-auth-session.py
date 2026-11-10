@@ -37,7 +37,7 @@ async def main():
 
     import json
     raw = json.dumps(storage_state).encode()
-    encrypted = _encrypt(raw)
+    encrypted = _encrypt(raw, TENANT_ID)
 
     path = auth_session_path(TENANT_ID, ENVIRONMENT_ID)
     upload_file(path, encrypted, content_type="application/octet-stream")

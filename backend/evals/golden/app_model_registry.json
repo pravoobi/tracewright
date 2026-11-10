@@ -5,33 +5,30 @@
       "discountCodeInput": "page.getByRole(\"textbox\", { name: \"Discount code\" })",
       "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
       "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
-      "orderTotal": "page.locator(\"#order-total\")",
-      "discountSummary": "page.locator(\"dt:has-text(\\\"Discount\\\")\")"
+      "orderTotal": "page.getByTestId(\"order-total\")",
+      "discountSummary": "page.getByTestId(\"discount-summary\")"
     },
     "locator_strategies": {
       "discountCodeInput": "role",
       "applyDiscountButton": "role",
       "proceedToCheckoutButton": "role",
-      "orderTotal": "css_warned",
-      "discountSummary": "css_warned"
+      "orderTotal": "testid",
+      "discountSummary": "testid"
     },
-    "warnings": [
-      "CSS locator used for 'cart order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute.",
-      "CSS locator used for 'discount code and percentage summary line' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
-    ]
+    "warnings": [],
+    "suggestions": {}
   },
   "CheckoutPage": {
     "url_pattern": "http://localhost:4000/checkout",
     "locators": {
       "placeOrderButton": "page.getByRole(\"button\", { name: \"Place order\" })",
-      "orderTotal": "page.locator(\"#order-total\")"
+      "orderTotal": "page.getByTestId(\"order-total\")"
     },
     "locator_strategies": {
       "placeOrderButton": "role",
-      "orderTotal": "css_warned"
+      "orderTotal": "testid"
     },
-    "warnings": [
-      "CSS locator used for 'checkout order total' \u2014 fragile to DOM changes. Consider adding a data-testid attribute."
-    ]
+    "warnings": [],
+    "suggestions": {}
   }
 }

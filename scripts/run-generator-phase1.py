@@ -34,7 +34,7 @@ TEST_CARD_FLOWS = [
             {"semantic_name": "discountCodeInput", "description": "discount code input", "role": "textbox", "name": "Discount code", "css": "#code"},
             {"semantic_name": "applyDiscountButton", "description": "apply discount code button", "role": "button", "name": "Apply discount code"},
             {"semantic_name": "proceedToCheckoutButton", "description": "proceed to checkout button", "role": "button", "name": "Proceed to checkout"},
-            {"semantic_name": "orderTotal", "description": "cart order total", "css": "#order-total"},
+            {"semantic_name": "orderTotal", "description": "cart order total", "css": "#order-total", "testid": "order-total"},
         ],
     },
     {
@@ -42,7 +42,7 @@ TEST_CARD_FLOWS = [
         "url": f"{BASE}/checkout",
         "elements": [
             {"semantic_name": "placeOrderButton", "description": "place order button", "role": "button", "name": "Place order"},
-            {"semantic_name": "orderTotal", "description": "checkout order total", "css": "#order-total"},
+            {"semantic_name": "orderTotal", "description": "checkout order total", "css": "#order-total", "testid": "order-total"},
         ],
     },
 ]

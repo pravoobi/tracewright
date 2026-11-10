@@ -33,11 +33,11 @@
       <dt>Subtotal</dt>
       <dd>$<%= subtotalDisplay %></dd>
       <% if (discount) { %>
-        <dt>Discount (<%= discount.code %>, <%= discount.percentOff %>%)</dt>
+        <dt data-testid="discount-summary">Discount (<%= discount.code %>, <%= discount.percentOff %>%)</dt>
         <dd>-$<%= discountDisplay %></dd>
       <% } %>
       <dt>Order total</dt>
-      <dd id="order-total">$<%= totalDisplay %></dd>
+      <dd id="order-total" data-testid="order-total">$<%= totalDisplay %></dd>
     </dl>
 
     <form method="post" action="/checkout/place-order">
