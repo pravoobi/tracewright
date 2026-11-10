@@ -6,14 +6,24 @@
       "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
       "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
       "orderTotal": "page.getByTestId(\"order-total\")",
-      "discountSummary": "page.getByTestId(\"discount-summary\")"
+      "discountSummary": "page.getByTestId(\"discount-summary\")",
+      "widgetQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Widget\" })",
+      "gadgetQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Gadget\" })",
+      "stickerQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Sticker\" })",
+      "updateCartButton": "page.getByRole(\"button\", { name: \"Update cart\" })",
+      "errorAlert": "page.getByRole(\"alert\")"
     },
     "locator_strategies": {
       "discountCodeInput": "role",
       "applyDiscountButton": "role",
       "proceedToCheckoutButton": "role",
       "orderTotal": "testid",
-      "discountSummary": "testid"
+      "discountSummary": "testid",
+      "widgetQuantityInput": "role",
+      "gadgetQuantityInput": "role",
+      "stickerQuantityInput": "role",
+      "updateCartButton": "role",
+      "errorAlert": "role"
     },
     "warnings": [],
     "suggestions": {}

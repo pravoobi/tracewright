@@ -29,4 +29,24 @@ export class CartPage extends BasePage {
   get discountSummary() {
     return this.page.getByTestId("discount-summary");
   }
+
+  get widgetQuantityInput() {
+    return this.page.getByRole("spinbutton", { name: "Quantity for Widget" });
+  }
+
+  get gadgetQuantityInput() {
+    return this.page.getByRole("spinbutton", { name: "Quantity for Gadget" });
+  }
+
+  get stickerQuantityInput() {
+    return this.page.getByRole("spinbutton", { name: "Quantity for Sticker" });
+  }
+
+  get updateCartButton() {
+    return this.page.getByRole("button", { name: "Update cart" });
+  }
+
+  get errorAlert() {
+    return this.page.getByRole("alert");
+  }
 }
