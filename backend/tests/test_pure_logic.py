@@ -134,3 +134,39 @@ def test_generic_wait_is_locator_timing():
 
 def test_unrecognised_error_is_ambiguous():
     assert classify_failure_heuristic("something unexpected") is None
+
+
+# --- planner setup-manifest provenance ---------------------------------------
+from backend.src.agents.planner import _mark_manifest_provenance  # noqa: E402
+
+SRC = "A 20% discount code (SAVE20) applies to carts over $10.00. Quantity limit is 10."
+
+
+def _card(manifest):
+    return {"setup_manifest": manifest, "tier_sources": {"tier": 1, "confidence": 0.9}}
+
+
+def test_manifest_grounded_entry_stays_document():
+    c = _card([{"type": "discount_code", "code": "SAVE20", "percentage": 20, "source": "document"}])
+    _mark_manifest_provenance(c, SRC)
+    assert c["setup_manifest"][0]["source"] == "document"
+    assert c["tier_sources"]["assumed_setup"] == 0
+
+
+def test_manifest_invented_value_downgraded_even_if_model_claims_document():
+    c = _card([{"type": "discount_code", "code": "SAVE15", "source": "document"}])
+    _mark_manifest_provenance(c, SRC)
+    assert c["setup_manifest"][0]["source"] == "assumed"
+    assert c["tier_sources"]["assumed_setup"] == 1
+
+
+def test_manifest_missing_source_defaults_to_assumed_and_structural_keys_ignored():
+    c = _card([{"type": "user", "role": "authenticated_customer"}])
+    _mark_manifest_provenance(c, SRC)
+    assert c["setup_manifest"][0]["source"] == "assumed"
+
+
+def test_manifest_empty_and_missing_tier_sources():
+    c = {"setup_manifest": []}
+    _mark_manifest_provenance(c, SRC)
+    assert c["tier_sources"]["assumed_setup"] == 0

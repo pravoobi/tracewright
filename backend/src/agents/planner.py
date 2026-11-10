@@ -61,7 +61,7 @@ async def generate_test_plan(
         max_tokens=16384,
     )
 
-    plan = _parse_plan(raw, doc_version)
+    plan = _parse_plan(raw, doc_version, source_text=_context_text(context))
 
     if tracer:
         tracer.update(
@@ -100,7 +100,7 @@ def _build_prompt(feature_area: str, doc_version: str, context: dict[str, Any]) 
     )
 
 
-def _parse_plan(raw: str, doc_version: str) -> dict[str, Any]:
+def _parse_plan(raw: str, doc_version: str, source_text: str = "") -> dict[str, Any]:
     try:
         plan = extract_json_object(raw)
     except json.JSONDecodeError:
@@ -112,6 +112,7 @@ def _parse_plan(raw: str, doc_version: str) -> dict[str, Any]:
         card.setdefault("introduced_in_version", doc_version)
         if not card.get("test_id"):
             card["test_id"] = f"TC-{uuid.uuid4().hex[:8].upper()}"
+        _mark_manifest_provenance(card, source_text)
 
     plan.setdefault("coverage_gaps", [])
     plan.setdefault("clarification_flags", [])
@@ -201,3 +202,56 @@ async def persist_plan(
 
     await session.commit()
     return card_ids
+
+
+def _context_text(context: dict[str, Any]) -> str:
+    parts = [c["content"] for c in context["chunks"]]
+    parts += [f"{b['title']} {b.get('description') or ''}" for b in context["bugs"]]
+    return " ".join(parts)
+
+
+def _concrete_values(entry: dict[str, Any]) -> list[str]:
+    """Strings/numbers in a manifest entry that must be traceable to the source text.
+    Structural keys (type, role, source) are excluded; booleans are ignored."""
+    skip = {"type", "role", "source", "state", "active"}
+    out: list[str] = []
+
+    def walk(v: Any, key: str = "") -> None:
+        if key in skip or isinstance(v, bool) or v is None:
+            return
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, k)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x, key)
+        else:
+            out.append(str(v))
+
+    walk(entry)
+    return out
+
+
+def _mark_manifest_provenance(card: dict[str, Any], source_text: str) -> None:
+    """Don't trust the model's own "source": "document" claim — downgrade an
+    entry to "assumed" if any concrete value in it is absent from the retrieved
+    source text (this is how TC-003 got an invented SAVE15 code and a
+    SKU-200 @ $33.33 cart that were presented as if they came from the doc).
+    Cards with any assumed entry are tagged so reviewers and the fixture author
+    see the setup is unverified: tier_sources["assumed_setup"] = count."""
+    haystack = source_text.lower()
+    assumed = 0
+    manifest = card.get("setup_manifest") or []
+    for entry in manifest:
+        if not isinstance(entry, dict):
+            continue
+        claimed_doc = entry.get("source") == "document"
+        grounded = claimed_doc and all(v.lower() in haystack for v in _concrete_values(entry))
+        entry["source"] = "document" if grounded else "assumed"
+        if not grounded:
+            assumed += 1
+    tiers = card.get("tier_sources")
+    if not isinstance(tiers, dict):
+        tiers = {"tier": 1, "confidence": 0.5}
+    tiers["assumed_setup"] = assumed
+    card["tier_sources"] = tiers

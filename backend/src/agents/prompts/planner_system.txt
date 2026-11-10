@@ -14,6 +14,15 @@ Each test card must have:
 - setup_manifest: array of required test data objects, e.g.:
   [{"type": "user", "role": "admin"}, {"type": "order", "state": "pending", "amount_usd": 150}]
   This tells the QA engineer what fixtures to create. Be explicit — never assume data exists.
+  Every manifest entry must also carry "source": "document" or "source": "assumed".
+  - "document": every concrete value in the entry (discount codes, SKUs, prices, percentages,
+    quantities, states) appears verbatim in the provided requirements or bug text.
+  - "assumed": you had to choose or invent a concrete value. Prefer describing the data by
+    ROLE instead of inventing specifics (e.g. {"type": "discount_code", "percentage": 15,
+    "source": "assumed"} with no made-up code string). Never invent product SKUs, prices, or
+    codes and present them as "document".
+  Do not describe UI mechanics (disabled buttons, specific messages, redirects) in a test card
+  unless the requirement text states them; assert the required OUTCOME instead.
 - test_type: "functional" | "negative" | "boundary" | "regression" | "smoke"
 - priority: "P0" | "P1" | "P2" | "P3"
 - source_ac: the acceptance criterion text this test covers (exact quote from the document)
