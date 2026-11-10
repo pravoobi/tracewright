@@ -1,6 +1,8 @@
 """Upload endpoint: file → MinIO → arq parsing job."""
 from __future__ import annotations
 
+import os
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -26,6 +28,19 @@ ALLOWED_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/csv",
 }
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^\w.-]")
+
+
+def _safe_upload_filename(filename: str | None) -> str:
+    """The MinIO object key is built as artifacts/{tenant_id}/{artifact_id}/
+    {filename} -- filename is entirely client-controlled (the multipart
+    field), so an unsanitized "../other-tenant/evil.pdf" or a filename
+    containing "/" lets a caller spoof key prefixes or scatter orphaned
+    objects outside its own artifact_id namespace. basename() strips any
+    directory components; the charset whitelist handles the rest."""
+    base = os.path.basename(filename or "upload") or "upload"
+    return _UNSAFE_FILENAME_CHARS.sub("_", base)
 
 
 @router.post("/{tenant_id}")
@@ -60,15 +75,19 @@ async def upload_document(
             )
         chunks.append(chunk)
     data = b"".join(chunks)
+    # Normalizes tenant_id to a safe charset before it's used to build the
+    # storage key below (str(uuid.UUID(...)), not the raw path param).
+    tenant_uuid_str = str(uuid.UUID(tenant_id))
     artifact_id = str(uuid.uuid4())
+    safe_filename = _safe_upload_filename(file.filename)
 
-    storage_path = artifact_path(tenant_id, artifact_id, file.filename or "upload")
+    storage_path = artifact_path(tenant_uuid_str, artifact_id, safe_filename)
     upload_file(storage_path, data, file.content_type or "application/octet-stream")
 
     # Determine artifact type
     if "spreadsheet" in (file.content_type or "") or "excel" in (file.content_type or "") or "csv" in (file.content_type or ""):
         artifact_type = "bug_export"
-    elif file.filename and file.filename.lower().endswith(".xlsx"):
+    elif safe_filename.lower().endswith(".xlsx"):
         artifact_type = "bug_export"
     else:
         artifact_type = "document"
@@ -77,7 +96,7 @@ async def upload_document(
         id=uuid.UUID(artifact_id),
         tenant_id=uuid.UUID(tenant_id),
         type=artifact_type,
-        filename=file.filename or "upload",
+        filename=safe_filename,
         version=version,
         storage_path=storage_path,
         status="queued",
@@ -88,7 +107,7 @@ async def upload_document(
     await enqueue_parse_job(
         artifact_id=artifact_id,
         tenant_id=tenant_id,
-        filename=file.filename or "upload",
+        filename=safe_filename,
         storage_path=storage_path,
         artifact_type=artifact_type,
     )

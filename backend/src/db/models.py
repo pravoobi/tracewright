@@ -145,7 +145,13 @@ class TestCard(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
     )
-    test_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # Scoped per-tenant (see __table_args__), NOT globally unique -- a global
+    # constraint meant tenant A minting "TC-001" could collide with tenant
+    # B's own "TC-001", triggering persist_plan's collision-suffix logic
+    # across tenants (a correctness bug) and letting one tenant infer
+    # another tenant's test_id existence from the collision (an existence
+    # leak).
+    test_id: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     preconditions: Mapped[str | None] = mapped_column(Text)
@@ -180,6 +186,10 @@ class TestCard(Base):
     tenant: Mapped[Tenant] = relationship(back_populates="test_cards")
     traceability_links: Mapped[list[TraceabilityLink]] = relationship(back_populates="test_card")
     test_results: Mapped[list[TestResult]] = relationship(back_populates="test_card")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "test_id", name="uq_test_cards_tenant_test_id"),
+    )
 
 
 class TraceabilityLink(Base):

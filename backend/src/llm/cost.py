@@ -53,19 +53,34 @@ async def record_llm_call(
     # transaction: the LLM call already cost real money by this point, so
     # the cost record must persist even if the caller's own business-logic
     # transaction later rolls back.
-    async with async_session_factory() as session:
-        session.add(
-            LlmCall(
-                tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
-                feature=feature,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                estimated_usd=estimated_usd,
-                latency_ms=latency_ms,
+    #
+    # Best-effort: the LLM call has ALREADY completed and cost real money by
+    # this point, so a transient DB error here must not fail the whole
+    # request (and hand the customer a 500 for a call that actually
+    # succeeded) -- log and move on, at the cost of that one call being
+    # invisible to budget tracking and the cost dashboard.
+    try:
+        async with async_session_factory() as session:
+            session.add(
+                LlmCall(
+                    tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
+                    feature=feature,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    estimated_usd=estimated_usd,
+                    latency_ms=latency_ms,
+                )
             )
+            await session.commit()
+    except Exception:
+        log.error(
+            "llm.cost_record_failed",
+            tenant_id=tenant_id,
+            feature=feature,
+            estimated_usd=estimated_usd,
+            exc_info=True,
         )
-        await session.commit()
 
 
 async def _spent_today(conn, tenant_id: str) -> float:

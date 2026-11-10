@@ -5,7 +5,7 @@ import re
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,14 +55,30 @@ def _extract_test_id(suite_titles: list[str]) -> str | None:
     return None
 
 
-def _walk_specs(suites: list[dict[str, Any]], ancestor_titles: list[str] | None = None):
-    """Yield (spec, ancestor_titles) for every spec in a Playwright JSON report's suite tree."""
+_MAX_SUITE_DEPTH = 50
+
+
+def _walk_specs(
+    suites: list[dict[str, Any]],
+    ancestor_titles: list[str] | None = None,
+    depth: int = 0,
+):
+    """Yield (spec, ancestor_titles) for every spec in a Playwright JSON report's suite tree.
+
+    depth is capped because `suites` is caller-supplied JSON (the ingest
+    endpoint body), not something we generated -- an attacker-crafted report
+    with thousands of nested "suites" arrays would otherwise blow the Python
+    recursion limit (RecursionError -> unhandled 500) on a legitimate-looking
+    POST. Real Playwright reports never nest anywhere close to this deep.
+    """
+    if depth > _MAX_SUITE_DEPTH:
+        return
     ancestor_titles = ancestor_titles or []
     for suite in suites:
         titles = ancestor_titles + [suite.get("title", "")]
         for spec in suite.get("specs", []):
             yield spec, titles
-        yield from _walk_specs(suite.get("suites", []), titles)
+        yield from _walk_specs(suite.get("suites", []), titles, depth + 1)
 
 
 @router.get("/{tenant_id}/applicable")
@@ -82,7 +98,7 @@ async def get_applicable_tests(
     env_result = await session.execute(env_stmt)
     env = env_result.scalar_one_or_none()
     if not env:
-        return {"error": "Environment not found"}
+        raise HTTPException(status_code=404, detail="Environment not found")
 
     tenant_stmt = select(Tenant).where(Tenant.id == uuid.UUID(tenant_id))
     tenant_result = await session.execute(tenant_stmt)
@@ -147,6 +163,16 @@ async def ingest_run(
     produced by test-scaffold/playwright.config.ts's `json` reporter). Creates
     one TestRun plus one TestResult per spec, matched back to test_cards via
     the TC-XXX id embedded in the generated describe-block title."""
+    from backend.src.db.models import Environment
+
+    env = await session.get(Environment, uuid.UUID(body.environment_id))
+    if env is None or str(env.tenant_id) != tenant_id:
+        # Without this check, a run could be attached to another tenant's
+        # environment (cross-tenant data mixing), and a bogus/nonexistent
+        # UUID would otherwise fail later as an unhandled FK violation (500)
+        # instead of a clean 404.
+        raise HTTPException(status_code=404, detail="Environment not found")
+
     cards_stmt = select(TestCard).where(TestCard.tenant_id == uuid.UUID(tenant_id))
     cards_result = await session.execute(cards_stmt)
     cards_by_test_id = {c.test_id: c for c in cards_result.scalars().all()}

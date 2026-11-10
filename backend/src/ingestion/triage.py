@@ -99,6 +99,13 @@ def _triage_docx(filename: str, data: bytes) -> TriageResult:
 
 
 def _triage_spreadsheet(filename: str, data: bytes) -> TriageResult:
+    if filename.lower().endswith(".csv"):
+        # openpyxl (used below for real Excel files) can't open a CSV at
+        # all -- it expects a zip-based .xlsx container. A CSV has no sheet
+        # concept, so it's always exactly one "page".
+        pages = [PageManifest(page_number=1, page_type="native", word_count=0)]
+        return TriageResult(filename=filename, total_pages=1, pages=pages, file_type="csv")
+
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     sheet_count = len(wb.sheetnames)

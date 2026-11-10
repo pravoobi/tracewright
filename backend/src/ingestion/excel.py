@@ -99,23 +99,40 @@ def column_signature(columns: list[str]) -> str:
     return ",".join(sorted(str(c).strip().lower() for c in columns))
 
 
-def peek_columns(data: bytes) -> list[str]:
+def _is_csv(filename: str | None) -> bool:
+    return bool(filename) and filename.lower().endswith(".csv")
+
+
+def _read_table(data: bytes, filename: str | None, **kwargs: Any) -> pd.DataFrame:
+    """upload.py's ALLOWED_TYPES accepts text/csv alongside Excel, but
+    pd.read_excel's underlying openpyxl engine can't open a CSV at all (it
+    expects a zip-based .xlsx container) -- every CSV upload used to die in
+    the worker with every artifact then stuck at "queued" (see
+    worker._parse_artifact_inner's now-caught exception path). Branch on
+    filename rather than guessing from content."""
+    if _is_csv(filename):
+        return pd.read_csv(io.BytesIO(data), **kwargs)
+    return pd.read_excel(io.BytesIO(data), **kwargs)
+
+
+def peek_columns(data: bytes, filename: str | None = None) -> list[str]:
     """Read just the header row — used to compute a column_signature and
     check for a saved mapping profile before doing the full parse."""
-    df = pd.read_excel(io.BytesIO(data), dtype=str, nrows=0)
+    df = _read_table(data, filename, dtype=str, nrows=0)
     return [str(c).strip().lower() for c in df.columns]
 
 
 def parse_bug_export(
     data: bytes,
+    filename: str | None = None,
     column_mapping: dict[str, str] | None = None,
 ) -> tuple[list[BugRecord], list[str]]:
     """
-    Parse Excel bug export into BugRecords.
+    Parse Excel or CSV bug export into BugRecords.
     Returns (records, unmapped_columns) — caller shows unmapped columns in the UI
     for the column-mapper one-time setup.
     """
-    df = pd.read_excel(io.BytesIO(data), dtype=str)
+    df = _read_table(data, filename, dtype=str)
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     # Build effective mapping: explicit mapping overrides aliases.

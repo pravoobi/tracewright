@@ -3,8 +3,26 @@ const express = require("express");
 const session = require("express-session");
 const { USERS, PRODUCTS, DISCOUNT_CODES, MIN_ORDER_FOR_DISCOUNT_CENTS, defaultCart } = require("./data");
 
+// This app is the eval harness's seeded test target ONLY (CLAUDE.md's
+// "demo-app: a small seeded web app for the eval harness") -- it has a
+// hardcoded session secret, plaintext password comparison, and an
+// unauthenticated /reset endpoint that wipes session state on request.
+// None of that is acceptable outside a local/CI test fixture, so refuse to
+// start under NODE_ENV=production and never bind beyond localhost by
+// default, rather than relying on nobody ever pointing a deploy config at
+// this directory by mistake.
+if (process.env.NODE_ENV === "production") {
+  console.error(
+    "demo-app refuses to start with NODE_ENV=production -- it is a test fixture " +
+      "(hardcoded session secret, plaintext credential check, unauthenticated /reset), " +
+      "never a deployable app."
+  );
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 4000;
+const HOST = process.env.DEMO_APP_HOST || "127.0.0.1";
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "..", "views"));
@@ -183,6 +201,6 @@ app.post("/checkout/place-order", requireAuth, (req, res) => {
   res.render("confirmation", { orderId, totalDisplay: centsToDollars(total) });
 });
 
-app.listen(PORT, () => {
-  console.log(`demo-app listening on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`demo-app (test fixture, not for production use) listening on http://${HOST}:${PORT}`);
 });

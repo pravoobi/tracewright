@@ -189,8 +189,15 @@ async def _load_registry(tenant_id: str, session: AsyncSession):
 
     from sqlalchemy import select
 
+    # ORDER BY -- without one, Postgres doesn't guarantee scan order, so which
+    # environment's registry gets used was effectively random once a tenant
+    # has more than one. Oldest-first (tie-broken by id) is at least a
+    # deterministic, reproducible choice.
     env_id = await session.scalar(
-        select(Environment.id).where(Environment.tenant_id == uuid.UUID(tenant_id)).limit(1)
+        select(Environment.id)
+        .where(Environment.tenant_id == uuid.UUID(tenant_id))
+        .order_by(Environment.updated_at.asc(), Environment.id.asc())
+        .limit(1)
     )
     if env_id is not None:
         try:
@@ -212,7 +219,11 @@ async def generate_card_test(
     card_id: str,
     session: AsyncSession = Depends(get_session),
 ):
-    from backend.src.agents.generator.codegen import generate_test_file, safe_filename
+    from backend.src.agents.generator.codegen import (
+        UnsafeGeneratedCodeError,
+        generate_test_file,
+        safe_filename,
+    )
     from sqlalchemy import update
 
     card = await session.get(TestCard, uuid.UUID(card_id))
@@ -243,13 +254,22 @@ async def generate_card_test(
         "source_logical_id": None,
     }
 
-    code = await generate_test_file(test_card_dict, registry, tenant_id=tenant_id)
+    try:
+        code = await generate_test_file(test_card_dict, registry, tenant_id=tenant_id)
+    except UnsafeGeneratedCodeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     locator_strategy = _infer_locator_strategy(code, registry)
     locator_suggestions = _collect_suggestions(code, registry)
 
     filename = safe_filename(card.test_id, card.title)
-    os.makedirs(_OUTPUT_DIR, exist_ok=True)
-    out_path = os.path.join(_OUTPUT_DIR, filename)
+    # Per-tenant subdirectory: _OUTPUT_DIR used to be shared by every tenant,
+    # so two tenants generating cards with the same test_id + similar title
+    # silently overwrote each other's .spec.ts files. str(uuid.UUID(...))
+    # both scopes the path and normalizes tenant_id to a safe charset before
+    # it's used as a directory name.
+    tenant_dir = os.path.join(_OUTPUT_DIR, str(uuid.UUID(tenant_id)))
+    os.makedirs(tenant_dir, exist_ok=True)
+    out_path = os.path.join(tenant_dir, filename)
 
     # Defense in depth on top of safe_filename's sanitization: refuse to
     # write anywhere outside the tests directory, in case some future
@@ -262,7 +282,7 @@ async def generate_card_test(
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(code)
 
-    relative_path = os.path.join("test-scaffold", "tests", filename)
+    relative_path = os.path.join("test-scaffold", "tests", str(uuid.UUID(tenant_id)), filename)
     await session.execute(
         update(TestCard)
         .where(TestCard.id == uuid.UUID(card_id))

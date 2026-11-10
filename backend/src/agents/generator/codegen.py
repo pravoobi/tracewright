@@ -14,6 +14,55 @@ from backend.src.llm.client import complete
 
 log = structlog.get_logger()
 
+
+class UnsafeGeneratedCodeError(Exception):
+    """Raised when generated test code contains a pattern that should never
+    appear in a Playwright POM test file -- most likely a sign of prompt
+    injection from an untrusted source document steering the Planner/
+    Generator into emitting code that does something other than test the
+    app."""
+
+
+_DENY_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bchild_process\b"), "child_process usage"),
+    (re.compile(r"\brequire\s*\("), "CommonJS require() -- generated tests must use ES imports only"),
+    (re.compile(r"\beval\s*\("), "eval()"),
+    (re.compile(r"\bnew\s+Function\s*\("), "Function() constructor (dynamic code execution)"),
+    (re.compile(r"\bfetch\s*\("), "raw fetch() -- tests must drive the app via page/page-objects, not raw HTTP"),
+    (re.compile(r"\baxios\b"), "axios usage"),
+    (re.compile(r"\b(?:http|https)\.request\s*\("), "raw http(s).request()"),
+    (re.compile(r"\bprocess\.env\b"), "process.env access"),
+    (re.compile(r"\bexecSync\s*\(|\bspawnSync?\s*\(|\bexec\s*\("), "process-spawning call"),
+]
+
+_IMPORT_ALLOWLIST = re.compile(
+    r"""^\s*import\s+.+\s+from\s+['"](@playwright/test|\.\./fixtures/|\.\./page-objects/)"""
+)
+
+
+def check_generated_code_safety(code: str) -> list[str]:
+    """Deny-list scan over LLM-generated test code before it's written to
+    the customer's git-tracked test scaffold. The Planner and Generator both
+    read untrusted document text (an uploaded requirements PDF) as part of
+    their prompt -- a malicious document can prompt-inject either agent, and
+    since human review approves test CARDS (title/description/setup
+    manifest), not the generated CODE itself, nothing else stands between a
+    successful injection and arbitrary TypeScript landing in the customer's
+    CI. This is a coarse first line of defense (deny-list + import
+    allowlist), not a sandbox -- it catches the concrete escape hatches
+    (spawning processes, eval, raw network calls, imports outside the
+    expected page-object/fixture set), not everything a sufficiently
+    creative injection could do."""
+    violations: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        for pattern, description in _DENY_PATTERNS:
+            if pattern.search(line):
+                violations.append(f"{description}: {stripped[:120]}")
+        if stripped.startswith("import ") and not _IMPORT_ALLOWLIST.match(line):
+            violations.append(f"import outside allowed fixtures/page-objects/@playwright/test: {stripped[:120]}")
+    return violations
+
 _CODEGEN_SYSTEM = """You are an expert Playwright TypeScript test author.
 Given a test card, page-object registry, and fixture context, generate a complete Playwright test file.
 
@@ -66,7 +115,21 @@ async def generate_test_file(
 
     # Prepend mandatory metadata header
     header = _build_metadata_header(test_card)
-    return header + "\n\n" + code
+    full_code = header + "\n\n" + code
+
+    violations = check_generated_code_safety(full_code)
+    if violations:
+        log.error(
+            "codegen.unsafe_code_rejected",
+            test_id=test_card.get("test_id"),
+            violations=violations,
+        )
+        raise UnsafeGeneratedCodeError(
+            f"Generated code for {test_card.get('test_id', 'unknown')} failed the "
+            f"safety check and was not written: {'; '.join(violations)}"
+        )
+
+    return full_code
 
 
 def _build_metadata_header(card: dict[str, Any]) -> str:

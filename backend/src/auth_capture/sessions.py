@@ -7,6 +7,8 @@ import os
 
 import structlog
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 from backend.src.config import settings
 from backend.src.storage.files import auth_session_path, download_file, upload_file
@@ -14,7 +16,7 @@ from backend.src.storage.files import auth_session_path, download_file, upload_f
 log = structlog.get_logger()
 
 
-def _get_key() -> bytes:
+def _get_master_key() -> bytes:
     raw = settings.auth_session_encryption_key
     if not raw or raw == "CHANGE_ME_generate_with_secrets_module":
         raise ValueError(
@@ -24,16 +26,34 @@ def _get_key() -> bytes:
     return base64.b64decode(raw)
 
 
-def _encrypt(data: bytes) -> bytes:
-    key = _get_key()
+def _get_tenant_key(tenant_id: str) -> bytes:
+    """CLAUDE.md promises per-tenant encryption for auth storage-state files
+    as a stated compliance/sales point -- a single global key for every
+    tenant meant one leaked key decrypted every tenant's session cookies,
+    not just one. HKDF-derive a distinct 32-byte key per tenant from the one
+    stored master key (info=tenant_id) rather than storing N keys: it's a
+    one-way derivation, so recovering one tenant's key doesn't expose the
+    master or any other tenant's key."""
+    master = _get_master_key()
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=f"auth-session:{tenant_id}".encode(),
+    )
+    return hkdf.derive(master)
+
+
+def _encrypt(data: bytes, tenant_id: str) -> bytes:
+    key = _get_tenant_key(tenant_id)
     aesgcm = AESGCM(key)
     nonce = os.urandom(12)
     ct = aesgcm.encrypt(nonce, data, None)
     return nonce + ct
 
 
-def _decrypt(data: bytes) -> bytes:
-    key = _get_key()
+def _decrypt(data: bytes, tenant_id: str) -> bytes:
+    key = _get_tenant_key(tenant_id)
     aesgcm = AESGCM(key)
     nonce, ct = data[:12], data[12:]
     return aesgcm.decrypt(nonce, ct, None)
@@ -72,7 +92,7 @@ async def capture_session(
         await browser.close()
 
     raw = json.dumps(storage_state).encode()
-    encrypted = _encrypt(raw)
+    encrypted = _encrypt(raw, tenant_id)
 
     path = auth_session_path(tenant_id, environment_id)
     upload_file(path, encrypted, content_type="application/octet-stream")
@@ -85,5 +105,5 @@ def load_session(tenant_id: str, environment_id: str) -> dict:
     """Download and decrypt storage state for use by the Generator."""
     path = auth_session_path(tenant_id, environment_id)
     encrypted = download_file(path)
-    raw = _decrypt(encrypted)
+    raw = _decrypt(encrypted, tenant_id)
     return json.loads(raw.decode())

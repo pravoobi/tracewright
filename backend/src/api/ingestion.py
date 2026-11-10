@@ -98,7 +98,7 @@ async def confirm_column_mapping(
     # have no such metadata, and requiring it here made confirmation fail
     # outright for them with a 400 the frontend didn't even surface.
     data = download_file(artifact.storage_path)
-    signature = column_signature(peek_columns(data))
+    signature = column_signature(peek_columns(data, artifact.filename))
 
     # Save for reuse on the customer's next upload of this same export format
     await session.execute(
@@ -116,7 +116,7 @@ async def confirm_column_mapping(
 
     # Re-parse the original file with the confirmed mapping applied, and
     # replace this artifact's previously-ingested (partially-mapped) bugs
-    records, unmapped = parse_bug_export(data, column_mapping=body.mapping)
+    records, unmapped = parse_bug_export(data, artifact.filename, column_mapping=body.mapping)
 
     await session.execute(delete(Bug).where(Bug.artifact_id == uuid.UUID(artifact_id)))
 

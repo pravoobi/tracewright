@@ -55,6 +55,28 @@ async def parse_artifact(
     artifact_type: str,
 ) -> None:
     """arq task: full ingestion pipeline for one artifact."""
+    log.info("worker.parse_start", artifact_id=artifact_id, filename=filename)
+
+    try:
+        await _parse_artifact_inner(artifact_id, tenant_id, filename, storage_path, artifact_type)
+    except Exception as exc:
+        # Without this, any pipeline exception (a classifier crash, a bad
+        # parse, a transient DB error) left the artifact stuck at
+        # status="queued" forever from the customer's/UI's perspective --
+        # no error status, no indication anything went wrong, no retry path.
+        # Re-raise after recording so arq's own failure logging still sees it.
+        log.error("worker.parse_failed", artifact_id=artifact_id, error=str(exc), exc_info=True)
+        await _set_status(artifact_id, "error", error_reason=str(exc)[:1000])
+        raise
+
+
+async def _parse_artifact_inner(
+    artifact_id: str,
+    tenant_id: str,
+    filename: str,
+    storage_path: str,
+    artifact_type: str,
+) -> None:
     from backend.src.db.models import Chunk, SourceArtifact
     from backend.src.db.session import async_session_factory
     from backend.src.ingestion.embed import embed_and_store_chunks
@@ -64,8 +86,6 @@ async def parse_artifact(
     from backend.src.ingestion.triage import triage_document
     from backend.src.storage.files import download_file
     from sqlalchemy import update
-
-    log.info("worker.parse_start", artifact_id=artifact_id, filename=filename)
 
     data = download_file(storage_path)
 
@@ -215,7 +235,7 @@ async def _ingest_bug_export(
         peek_columns,
     )
 
-    raw_columns = peek_columns(data)
+    raw_columns = peek_columns(data, filename)
     signature = column_signature(raw_columns)
 
     # A previously-confirmed mapping for this exact export format (same
@@ -233,7 +253,7 @@ async def _ingest_bug_export(
         if row:
             saved_mapping = row
 
-    records, unmapped = parse_bug_export(data, column_mapping=saved_mapping)
+    records, unmapped = parse_bug_export(data, filename, column_mapping=saved_mapping)
 
     ingested = 0
     async with async_session_factory() as session:
@@ -380,16 +400,22 @@ async def _deprecate_removed_chunks(
     return test_ids_list
 
 
-async def _set_status(artifact_id: str, status: str) -> None:
+async def _set_status(artifact_id: str, status: str, error_reason: str | None = None) -> None:
     from backend.src.db.models import SourceArtifact
     from backend.src.db.session import async_session_factory
     from sqlalchemy import update
 
     async with async_session_factory() as session:
+        values: dict[str, Any] = {"status": status}
+        if error_reason is not None:
+            artifact = await session.get(SourceArtifact, uuid.UUID(artifact_id))
+            metadata = dict(artifact.metadata_ or {}) if artifact else {}
+            metadata["error_reason"] = error_reason
+            values["metadata_"] = metadata
         await session.execute(
             update(SourceArtifact)
             .where(SourceArtifact.id == uuid.UUID(artifact_id))
-            .values(status=status)
+            .values(**values)
         )
         await session.commit()
 
