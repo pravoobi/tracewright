@@ -18,7 +18,7 @@ from typing import Any, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from minio.error import S3Error
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.auth.api_key import require_tenant_access
@@ -213,14 +213,25 @@ async def _load_registry(tenant_id: str, session: AsyncSession):
     return None
 
 
+class GenerateRequest(BaseModel):
+    # A card whose setup data was chosen by the Planner (not quoted from the
+    # customer's documents) can't be expected to pass as-is. Generation is
+    # refused until the caller explicitly accepts that the data must be
+    # supplied by the customer; the generated file then lists every
+    # assumption in its header.
+    acknowledge_assumed_setup: bool = Field(default=False)
+
+
 @router.post("/{tenant_id}/cards/{card_id}/generate")
 async def generate_card_test(
     tenant_id: str,
     card_id: str,
+    body: GenerateRequest | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     from backend.src.agents.generator.codegen import (
         UnsafeGeneratedCodeError,
+        assumed_setup_entries,
         generate_test_file,
         safe_filename,
     )
@@ -233,6 +244,20 @@ async def generate_card_test(
         raise HTTPException(
             status_code=400,
             detail=f"Test card must be approved before generation (status: {card.approval_status})",
+        )
+
+    assumed = assumed_setup_entries(card.setup_manifest)
+    if assumed and not (body and body.acknowledge_assumed_setup):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    f"{len(assumed)} setup item(s) were assumed by the Planner and are not in the "
+                    "source documents. Provide/confirm this data, then retry with "
+                    "acknowledge_assumed_setup=true (it will be listed in the generated file's header)."
+                ),
+                "assumed_setup": assumed,
+            },
         )
 
     registry = await _load_registry(tenant_id, session)
@@ -298,5 +323,6 @@ async def generate_card_test(
         "playwright_code_path": relative_path,
         "locator_strategy": locator_strategy,
         "locator_suggestions": locator_suggestions,
+        "assumed_setup": assumed,
         "code": code,
     }

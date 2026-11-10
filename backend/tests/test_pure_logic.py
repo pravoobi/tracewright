@@ -170,3 +170,31 @@ def test_manifest_empty_and_missing_tier_sources():
     c = {"setup_manifest": []}
     _mark_manifest_provenance(c, SRC)
     assert c["tier_sources"]["assumed_setup"] == 0
+
+
+# --- generator: assumed setup handling ---------------------------------------
+from backend.src.agents.generator.codegen import _build_metadata_header, assumed_setup_entries  # noqa: E402
+
+
+def test_assumed_entries_only_counts_explicit_assumed():
+    m = [
+        {"type": "user", "source": "assumed"},
+        {"type": "cart", "source": "document"},
+        {"type": "legacy"},  # pre-provenance card: unknown, not assumed
+        "not-a-dict",
+    ]
+    assert assumed_setup_entries(m) == [{"type": "user", "source": "assumed"}]
+    assert assumed_setup_entries(None) == []
+
+
+def test_header_lists_assumptions_on_single_comment_lines():
+    card = {"test_id": "TC-1", "setup_manifest": [
+        {"type": "discount_code", "code": "X\nconsole.log(1)", "source": "assumed"}]}
+    header = _build_metadata_header(card)
+    assert "SETUP ASSUMPTIONS" in header
+    assert all(line.startswith("//") for line in header.splitlines())  # no comment break-out
+
+
+def test_header_has_no_assumption_block_when_grounded():
+    card = {"test_id": "TC-1", "setup_manifest": [{"type": "cart", "source": "document"}]}
+    assert "SETUP ASSUMPTIONS" not in _build_metadata_header(card)

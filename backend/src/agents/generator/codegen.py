@@ -80,6 +80,11 @@ Rules:
   option with a pre-captured logged-in session; importing from `@playwright/test`
   instead runs the test unauthenticated and every request redirects to the login
   page, causing every subsequent locator wait to time out.
+- Setup-manifest entries marked `"source": "assumed"` are UNVERIFIED: the Planner chose their
+  values, they are not in the customer's requirements and may not exist in the target app.
+  Never present such values as established facts; keep them in one clearly named constant
+  near the top of the test and add a `// Setup assumption:` comment saying the customer
+  must provide/confirm that data. Entries marked "document" are grounded in the requirements.
 - Each test file starts with metadata comments linking to the test card ID and source artifacts.
 - Use TypeScript with strict types.
 - Use async/await throughout.
@@ -132,6 +137,13 @@ async def generate_test_file(
     return full_code
 
 
+def assumed_setup_entries(manifest: list[Any] | None) -> list[dict[str, Any]]:
+    """Setup-manifest entries the Planner marked (or the grounding check
+    downgraded to) "assumed". Cards from before provenance tracking have no
+    "source" key at all -- that's unknown, not assumed, so they don't count."""
+    return [e for e in (manifest or []) if isinstance(e, dict) and e.get("source") == "assumed"]
+
+
 def _build_metadata_header(card: dict[str, Any]) -> str:
     lines = [
         "// ─── AI Test Agent — Generated Test ───────────────────────────────────────",
@@ -143,6 +155,15 @@ def _build_metadata_header(card: dict[str, Any]) -> str:
         "// ─────────────────────────────────────────────────────────────────────────",
         "// DO NOT EDIT locators manually — regenerate via the AI test agent.",
     ]
+    assumed = assumed_setup_entries(card.get("setup_manifest"))
+    if assumed:
+        lines.append("//")
+        lines.append("// SETUP ASSUMPTIONS — not found in the source documents; the customer must")
+        lines.append("// provide or confirm this data in the target environment before this test can pass:")
+        for entry in assumed:
+            # json.dumps keeps each entry on one line, so a value containing a
+            # newline can't break out of the comment (card text is LLM output).
+            lines.append("//   - " + json.dumps(entry, ensure_ascii=False))
     return "\n".join(lines)
 
 
