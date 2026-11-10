@@ -6,6 +6,7 @@ import json
 import os
 
 import structlog
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
@@ -101,9 +102,31 @@ async def capture_session(
     return path
 
 
+def _decrypt_legacy(data: bytes) -> bytes:
+    """Files written before per-tenant keys were introduced were encrypted
+    directly with the master key."""
+    nonce, ct = data[:12], data[12:]
+    return AESGCM(_get_master_key()).decrypt(nonce, ct, None)
+
+
 def load_session(tenant_id: str, environment_id: str) -> dict:
-    """Download and decrypt storage state for use by the Generator."""
+    """Download and decrypt storage state for use by the Generator.
+
+    Switching to HKDF-derived per-tenant keys made every storage-state file
+    already in object storage undecryptable (AESGCM InvalidTag), forcing every
+    customer to redo the interactive login. Fall back to the legacy master
+    key and re-encrypt under the tenant key on first read, so existing
+    sessions migrate transparently. A failure under BOTH keys is a real
+    error (tampering, wrong key, or corruption) and is raised."""
     path = auth_session_path(tenant_id, environment_id)
     encrypted = download_file(path)
-    raw = _decrypt(encrypted, tenant_id)
+    try:
+        raw = _decrypt(encrypted, tenant_id)
+    except InvalidTag:
+        raw = _decrypt_legacy(encrypted)  # raises InvalidTag if this fails too
+        try:
+            upload_file(path, _encrypt(raw, tenant_id), content_type="application/octet-stream")
+            log.info("auth_capture.migrated_legacy_encryption", path=path)
+        except Exception:
+            log.warning("auth_capture.legacy_migration_failed", path=path, exc_info=True)
     return json.loads(raw.decode())

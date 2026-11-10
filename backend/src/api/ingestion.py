@@ -21,6 +21,34 @@ router = APIRouter(
 )
 
 
+@router.post("/{tenant_id}/artifacts/{artifact_id}/confirm-oversized")
+async def confirm_oversized(
+    tenant_id: str, artifact_id: str, session: AsyncSession = Depends(get_session)
+):
+    """Process a document that was held back as oversized (status
+    "error_oversized") after the customer explicitly confirms."""
+    from backend.src.worker import enqueue_parse_job
+
+    artifact = await session.get(SourceArtifact, uuid.UUID(artifact_id))
+    if artifact is None or str(artifact.tenant_id) != tenant_id:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    if artifact.status != "error_oversized":
+        raise HTTPException(
+            status_code=409, detail=f"Artifact is not awaiting oversize confirmation (status: {artifact.status})"
+        )
+    artifact.status = "queued"
+    await session.commit()
+    await enqueue_parse_job(
+        artifact_id=str(artifact.id),
+        tenant_id=tenant_id,
+        filename=artifact.filename,
+        storage_path=artifact.storage_path,
+        artifact_type=artifact.type,
+        allow_oversized=True,
+    )
+    return {"status": "queued"}
+
+
 class ReviewAction(BaseModel):
     action: Literal["approve", "reject", "needs_clarification"]
     review_duration_ms: int | None = None

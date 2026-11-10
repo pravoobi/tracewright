@@ -128,8 +128,6 @@ async def build_registry(
 ):
     """Phase 1: walk the given flows against the live environment, verifying
     every locator, and persist the resulting page-object registry."""
-    from urllib.parse import urlparse
-
     from backend.src.agents.generator.app_model import build_app_model
     from backend.src.storage.files import registry_path, upload_file
 
@@ -146,13 +144,16 @@ async def build_registry(
     # what the environment is actually registered for (SSRF). Every flow's
     # URL must share the environment's own registered origin -- the one
     # thing the customer actually vetted when they set up the environment.
-    env_origin = urlparse(env.url)
+    from backend.src.agents.generator.app_model import _origin
+
+    env_origin = _origin(env.url)
     for flow in body.test_card_flows:
         flow_url = flow.get("url")
-        if not flow_url:
-            continue
-        flow_origin = urlparse(flow_url)
-        if (flow_origin.scheme, flow_origin.netloc) != (env_origin.scheme, env_origin.netloc):
+        if flow_url is None or flow_url == "":
+            continue  # defaults to the environment URL
+        if not isinstance(flow_url, str):
+            raise HTTPException(status_code=400, detail="Flow url must be a string")
+        if _origin(flow_url) != env_origin:
             raise HTTPException(
                 status_code=400,
                 detail=f"Flow URL '{flow_url}' is not on the environment's registered origin",
@@ -183,22 +184,31 @@ async def build_registry(
     }
 
 
-async def _load_registry(tenant_id: str, session: AsyncSession):
+async def _load_registry(
+    tenant_id: str, session: AsyncSession, environment_id: str | None = None
+):
     from backend.src.agents.generator.app_model import AppModelRegistry
     from backend.src.storage.files import download_file, registry_path
 
     from sqlalchemy import select
 
-    # ORDER BY -- without one, Postgres doesn't guarantee scan order, so which
-    # environment's registry gets used was effectively random once a tenant
-    # has more than one. Oldest-first (tie-broken by id) is at least a
-    # deterministic, reproducible choice.
-    env_id = await session.scalar(
-        select(Environment.id)
-        .where(Environment.tenant_id == uuid.UUID(tenant_id))
-        .order_by(Environment.updated_at.asc(), Environment.id.asc())
-        .limit(1)
-    )
+    if environment_id is not None:
+        # Explicit choice: must belong to this tenant.
+        env = await session.get(Environment, uuid.UUID(environment_id))
+        if env is None or str(env.tenant_id) != tenant_id:
+            raise HTTPException(status_code=404, detail="Environment not found")
+        env_id = env.id
+    else:
+        # No environment named: default to the tenant's most recently updated
+        # one (the registry most likely just built), tie-broken by id so the
+        # choice is deterministic. Callers with several environments should
+        # pass environment_id explicitly rather than rely on this default.
+        env_id = await session.scalar(
+            select(Environment.id)
+            .where(Environment.tenant_id == uuid.UUID(tenant_id))
+            .order_by(Environment.updated_at.desc(), Environment.id.asc())
+            .limit(1)
+        )
     if env_id is not None:
         try:
             raw = download_file(registry_path(tenant_id, str(env_id)))
@@ -220,6 +230,8 @@ class GenerateRequest(BaseModel):
     # supplied by the customer; the generated file then lists every
     # assumption in its header.
     acknowledge_assumed_setup: bool = Field(default=False)
+    # Which environment's page-object registry to generate against.
+    environment_id: str | None = None
 
 
 @router.post("/{tenant_id}/cards/{card_id}/generate")
@@ -260,7 +272,9 @@ async def generate_card_test(
             },
         )
 
-    registry = await _load_registry(tenant_id, session)
+    registry = await _load_registry(
+        tenant_id, session, body.environment_id if body else None
+    )
     if registry is None:
         raise HTTPException(
             status_code=503,

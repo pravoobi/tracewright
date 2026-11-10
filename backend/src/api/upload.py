@@ -80,14 +80,24 @@ async def upload_document(
     tenant_uuid_str = str(uuid.UUID(tenant_id))
     artifact_id = str(uuid.uuid4())
     safe_filename = _safe_upload_filename(file.filename)
+    # The bug-export parser picks CSV vs Excel by extension, so a text/csv
+    # upload named e.g. "bugs" must get one or it is read as .xlsx and fails.
+    if "csv" in (file.content_type or "") and not safe_filename.lower().endswith(".csv"):
+        safe_filename += ".csv"
 
     storage_path = artifact_path(tenant_uuid_str, artifact_id, safe_filename)
     upload_file(storage_path, data, file.content_type or "application/octet-stream")
 
-    # Determine artifact type
-    if "spreadsheet" in (file.content_type or "") or "excel" in (file.content_type or "") or "csv" in (file.content_type or ""):
-        artifact_type = "bug_export"
-    elif safe_filename.lower().endswith(".xlsx"):
+    # Determine artifact type: by declared content type OR file extension
+    # (a "text/csv" upload named "bugs" has no .csv extension, and the parser
+    # keys off the extension, so the extension is normalised below).
+    content_type = file.content_type or ""
+    if (
+        "spreadsheet" in content_type
+        or "excel" in content_type
+        or "csv" in content_type
+        or safe_filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    ):
         artifact_type = "bug_export"
     else:
         artifact_type = "document"

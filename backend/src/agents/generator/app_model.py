@@ -57,6 +57,17 @@ class AppModelRegistry:
         return registry
 
 
+def _origin(url: str) -> tuple[str, str, int | None]:
+    """(scheme, host, port) with case-folding and default ports normalised, so
+    https://Host and https://host:443 compare equal."""
+    from urllib.parse import urlparse
+
+    u = urlparse(url)
+    scheme = (u.scheme or "").lower()
+    port = u.port or {"http": 80, "https": 443}.get(scheme)
+    return scheme, (u.hostname or "").lower(), port
+
+
 async def build_app_model(
     tenant_id: str,
     environment_id: str,
@@ -77,9 +88,26 @@ async def build_app_model(
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(storage_state=storage_state)
 
+        # The decrypted auth cookies are loaded into this browser, so it must
+        # never be steered off the environment's registered origin -- by a flow
+        # URL, or by a redirect (e.g. an open redirect on the app, or a 302 to a
+        # cloud metadata address). Checking only the initial URL string is not
+        # enough: every navigation hop, including redirects, passes through this.
+        allowed_origin = _origin(staging_url)
+
+        async def _same_origin_navigations_only(route):
+            request = route.request
+            if request.is_navigation_request() and _origin(request.url) != allowed_origin:
+                log.warning("app_model.blocked_cross_origin_navigation", url=request.url)
+                await route.abort()
+                return
+            await route.continue_()
+
+        await context.route("**/*", _same_origin_navigations_only)
+
         for flow in test_card_flows:
             page_name = flow.get("page_name", "UnknownPage")
-            url = flow.get("url", staging_url)
+            url = flow.get("url") or staging_url
 
             if page_name in registry.pages:
                 continue  # already built this page object

@@ -25,19 +25,32 @@ class UnsafeGeneratedCodeError(Exception):
 
 _DENY_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bchild_process\b"), "child_process usage"),
-    (re.compile(r"\brequire\s*\("), "CommonJS require() -- generated tests must use ES imports only"),
+    # (?<![.\w]) so method calls like regex.exec(...) / obj.require(...) don't false-positive
+    (re.compile(r"(?<![.\w])require\s*\("), "CommonJS require() -- generated tests must use ES imports only"),
+    (re.compile(r"\bimport\s*\("), "dynamic import()"),
+    (re.compile(r"\b(?:process|globalThis|global|window)\s*\["), "computed access on a global object"),
     (re.compile(r"\beval\s*\("), "eval()"),
     (re.compile(r"\bnew\s+Function\s*\("), "Function() constructor (dynamic code execution)"),
     (re.compile(r"\bfetch\s*\("), "raw fetch() -- tests must drive the app via page/page-objects, not raw HTTP"),
     (re.compile(r"\baxios\b"), "axios usage"),
     (re.compile(r"\b(?:http|https)\.request\s*\("), "raw http(s).request()"),
     (re.compile(r"\bprocess\.env\b"), "process.env access"),
-    (re.compile(r"\bexecSync\s*\(|\bspawnSync?\s*\(|\bexec\s*\("), "process-spawning call"),
+    (re.compile(r"\bexecSync\s*\(|\bspawnSync?\s*\(|(?<![.\w])exec\s*\("), "process-spawning call"),
 ]
 
-_IMPORT_ALLOWLIST = re.compile(
-    r"""^\s*import\s+.+\s+from\s+['"](@playwright/test|\.\./fixtures/|\.\./page-objects/)"""
-)
+# First quoted string after an `import` keyword is the module specifier. The
+# lazy [^;'"]* spans newlines, so a multi-line import
+# (import { A, B } split across lines, then `from '...'`) is checked as one
+# unit; a per-line check rejected those legitimate statements.
+_IMPORT_STATEMENT = re.compile(r"""(?m)^[ \t]*import\b[^;'"]*?['"]([^'"\n]+)['"]""")
+_ALLOWED_IMPORT_PREFIXES = ("../fixtures/", "../page-objects/")
+
+
+def _import_allowed(spec: str) -> bool:
+    if spec == "@playwright/test":
+        return True
+    # No path traversal after the allowed prefix ("../fixtures/../../x").
+    return spec.startswith(_ALLOWED_IMPORT_PREFIXES) and ".." not in spec[3:].split("/")
 
 
 def check_generated_code_safety(code: str) -> list[str]:
@@ -59,8 +72,11 @@ def check_generated_code_safety(code: str) -> list[str]:
         for pattern, description in _DENY_PATTERNS:
             if pattern.search(line):
                 violations.append(f"{description}: {stripped[:120]}")
-        if stripped.startswith("import ") and not _IMPORT_ALLOWLIST.match(line):
-            violations.append(f"import outside allowed fixtures/page-objects/@playwright/test: {stripped[:120]}")
+    for match in _IMPORT_STATEMENT.finditer(code):
+        if not _import_allowed(match.group(1)):
+            violations.append(
+                f"import outside allowed fixtures/page-objects/@playwright/test: {match.group(1)[:120]}"
+            )
     return violations
 
 _CODEGEN_SYSTEM = """You are an expert Playwright TypeScript test author.

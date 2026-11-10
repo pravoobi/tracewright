@@ -14,6 +14,11 @@ import "./index.css";
 // every page/component.
 const apiKey = import.meta.env.VITE_TENANT_API_KEY;
 if (apiKey) {
+  if (import.meta.env.PROD) {
+    // VITE_* values are inlined into the public bundle: this key is visible to
+    // every visitor. Acceptable for local dev only.
+    console.warn("VITE_TENANT_API_KEY is embedded in this production bundle and is publicly readable.");
+  }
   axios.defaults.headers.common["X-API-Key"] = apiKey;
 } else {
   console.warn(

@@ -21,6 +21,7 @@ interface Artifact {
   id: string;
   filename: string;
   type: string;
+  status: string;
   unmapped_columns: string[];
 }
 
@@ -58,6 +59,13 @@ export function IngestionReview() {
   const bugExportsNeedingMapping = artifacts.filter(
     (a) => a.type === "bug_export" && a.unmapped_columns.length > 0
   );
+
+  const oversized = artifacts.filter((a) => a.status === "error_oversized");
+  const confirmOversized = useMutation({
+    mutationFn: (artifactId: string) =>
+      axios.post(`${API}/ingestion/${TENANT_ID}/artifacts/${artifactId}/confirm-oversized`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["artifacts", TENANT_ID] }),
+  });
 
   const reviewMutation = useMutation({
     mutationFn: ({
@@ -106,6 +114,23 @@ export function IngestionReview() {
           </button>
         </div>
       </div>
+
+      {oversized.map((a) => (
+        <div key={a.id} className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+          <span className="font-medium">{a.filename}</span> is larger than the page limit and was not
+          processed. Processing it uses LLM budget for every page.
+          <button
+            className="ml-3 rounded bg-amber-600 px-2 py-1 text-white disabled:opacity-50"
+            disabled={confirmOversized.isPending}
+            onClick={() => confirmOversized.mutate(a.id)}
+          >
+            Process anyway
+          </button>
+          {confirmOversized.isError && (
+            <span className="ml-2 text-red-700">Could not start processing.</span>
+          )}
+        </div>
+      ))}
 
       {bugExportsNeedingMapping.map((a) => (
         <ColumnMapper key={a.id} tenantId={TENANT_ID} artifactId={a.id} filename={a.filename} />

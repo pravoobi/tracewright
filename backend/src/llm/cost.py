@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import structlog
@@ -9,7 +8,7 @@ from sqlalchemy import select, func, text
 
 from backend.src.config import settings
 from backend.src.db.models import LlmCall
-from backend.src.db.session import async_session_factory, engine
+from backend.src.db.session import async_session_factory
 
 log = structlog.get_logger()
 
@@ -21,7 +20,7 @@ _COST_PER_1M: dict[str, tuple[float, float]] = {
 
 
 class TenantBudgetExceededError(Exception):
-    """Raised by budget_guard when a tenant is over their daily LLM spend cap."""
+    """Raised by reserve_budget when a tenant is over their daily LLM spend cap."""
 
 
 def _estimate_usd(model: str, input_tokens: int, output_tokens: int) -> float:
@@ -36,6 +35,7 @@ async def record_llm_call(
     input_tokens: int,
     output_tokens: int,
     latency_ms: int,
+    reservation_id: uuid.UUID | None = None,
 ) -> None:
     estimated_usd = _estimate_usd(model, input_tokens, output_tokens)
     log.info(
@@ -61,6 +61,16 @@ async def record_llm_call(
     # invisible to budget tracking and the cost dashboard.
     try:
         async with async_session_factory() as session:
+            if reservation_id is not None:
+                # Replace the pre-call worst-case reservation with the real cost.
+                row = await session.get(LlmCall, reservation_id)
+                if row is not None:
+                    row.input_tokens = input_tokens
+                    row.output_tokens = output_tokens
+                    row.estimated_usd = estimated_usd
+                    row.latency_ms = latency_ms
+                    await session.commit()
+                    return
             session.add(
                 LlmCall(
                     tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
@@ -103,28 +113,42 @@ def _advisory_lock_key(tenant_id: str) -> int:
     return uuid.UUID(tenant_id).int & 0x7FFFFFFFFFFFFFFF
 
 
-@asynccontextmanager
-async def budget_guard(tenant_id: str | None):
-    """Check-then-spend on the daily LLM budget used to race: the check ran
-    BEFORE the (multi-second) LLM call, and spend was only recorded AFTER —
-    so N concurrent calls for the same tenant could all read the same
-    pre-call spend total, all pass, and only get caught after collectively
-    overshooting the cap by up to N call-costs. Holds a Postgres session-
-    level advisory lock keyed by tenant for the ENTIRE check-call-record
-    window (not just the check), so a second call for the same tenant can't
-    even start until the first one's spend has actually landed. Different
-    tenants never block each other. No-op when budgets are disabled
-    (the default) or tenant_id is absent."""
+def estimate_call_usd(model: str, messages: list[dict], max_tokens: int | None) -> float:
+    """Worst-case cost of one call, used to reserve budget before it runs:
+    prompt size (~4 chars/token) at the input rate plus max_tokens at the
+    output rate."""
+    prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
+    return _estimate_usd(model, prompt_chars // 4 + 1, max_tokens or 4096)
+
+
+async def reserve_budget(
+    tenant_id: str | None, feature: str, model: str, estimate_usd: float
+) -> uuid.UUID | None:
+    """Atomically check the tenant's daily budget and reserve this call's
+    worst-case cost, in ONE short transaction -- nothing is held while the
+    (multi-second) LLM call runs.
+
+    The previous design held a session-level advisory lock plus a pooled
+    connection for the whole call. That serialized a tenant's calls, let a
+    few concurrent tenants exhaust the pool, and -- because session-level
+    advisory locks survive the pool's rollback-on-return -- a cancelled
+    request or failed unlock left the lock held forever, deadlocking every
+    later call for that tenant. Here the lock is transaction-scoped
+    (pg_advisory_xact_lock), so it is always released at commit/rollback,
+    and concurrent calls see each other's reservations as already-spent.
+
+    Returns the reservation row id (pass to record_llm_call, or
+    release_budget on failure), or None when budgets are disabled."""
     budget = settings.default_tenant_daily_llm_budget_usd
     if not tenant_id or budget <= 0:
-        yield
-        return
+        return None
 
-    lock_key = _advisory_lock_key(tenant_id)
-    async with engine.connect() as conn:
-        await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": lock_key})
-        try:
-            spent_today = await _spent_today(conn, tenant_id)
+    async with async_session_factory() as session:
+        async with session.begin():
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:k)"), {"k": _advisory_lock_key(tenant_id)}
+            )
+            spent_today = await _spent_today(session, tenant_id)
             if spent_today >= budget:
                 log.warning(
                     "llm.budget_exceeded",
@@ -136,6 +160,36 @@ async def budget_guard(tenant_id: str | None):
                     f"Tenant {tenant_id} has spent ${spent_today:.4f} today, "
                     f"at or above the ${budget:.4f} daily LLM budget."
                 )
-            yield
-        finally:
-            await conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": lock_key})
+            row = LlmCall(
+                tenant_id=uuid.UUID(tenant_id),
+                feature=feature,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                estimated_usd=estimate_usd,
+                latency_ms=0,
+            )
+            session.add(row)
+            await session.flush()
+            return row.id
+
+
+async def release_budget(reservation_id: uuid.UUID | None) -> None:
+    """Drop a reservation whose LLM call failed (it cost nothing)."""
+    if reservation_id is None:
+        return
+    try:
+        async with async_session_factory() as session:
+            row = await session.get(LlmCall, reservation_id)
+            if row is not None:
+                await session.delete(row)
+                await session.commit()
+    except Exception:
+        log.error("llm.reservation_release_failed", reservation_id=str(reservation_id), exc_info=True)
+
+
+def _advisory_lock_key(tenant_id: str) -> int:
+    # pg_advisory_xact_lock takes a signed 64-bit int; fold the tenant UUID
+    # down into that range deterministically (collisions just mean two
+    # tenants occasionally serialize their short reserve step).
+    return uuid.UUID(tenant_id).int & 0x7FFFFFFFFFFFFFFF

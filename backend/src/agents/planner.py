@@ -15,7 +15,7 @@ from backend.src.knowledge.retrieval import retrieve_for_planning
 from backend.src.llm.client import complete, extract_json_object
 from backend.src.llm.langfuse_tracer import trace
 
-_SAFE_TEST_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+_SAFE_TEST_ID = re.compile(r"[A-Za-z0-9_-]+")
 
 log = structlog.get_logger()
 
@@ -151,8 +151,10 @@ async def persist_plan(
         # filename (codegen.py's safe_filename) -- reject anything outside
         # a safe charset here, at the point of persistence, rather than
         # only sanitizing downstream at the point of use.
-        test_id = card["test_id"]
-        if not _SAFE_TEST_ID.match(test_id):
+        # LLM output: may be an int/None, and "$" would accept a trailing
+        # newline -- coerce to a str and require a full match.
+        test_id = card["test_id"] if isinstance(card["test_id"], str) else ""
+        if not _SAFE_TEST_ID.fullmatch(test_id):
             log.warning("planner.unsafe_test_id_rejected", raw=test_id)
             test_id = f"TC-{uuid.uuid4().hex[:8]}"
         if test_id in used_ids:

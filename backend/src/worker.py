@@ -33,6 +33,7 @@ async def enqueue_parse_job(
     filename: str,
     storage_path: str,
     artifact_type: str,
+    allow_oversized: bool = False,
 ) -> None:
     pool = await create_pool(_redis_settings())
     await pool.enqueue_job(
@@ -42,6 +43,7 @@ async def enqueue_parse_job(
         filename=filename,
         storage_path=storage_path,
         artifact_type=artifact_type,
+        allow_oversized=allow_oversized,
     )
     await pool.aclose()
 
@@ -53,12 +55,15 @@ async def parse_artifact(
     filename: str,
     storage_path: str,
     artifact_type: str,
+    allow_oversized: bool = False,
 ) -> None:
     """arq task: full ingestion pipeline for one artifact."""
     log.info("worker.parse_start", artifact_id=artifact_id, filename=filename)
 
     try:
-        await _parse_artifact_inner(artifact_id, tenant_id, filename, storage_path, artifact_type)
+        await _parse_artifact_inner(
+            artifact_id, tenant_id, filename, storage_path, artifact_type, allow_oversized
+        )
     except Exception as exc:
         # Without this, any pipeline exception (a classifier crash, a bad
         # parse, a transient DB error) left the artifact stuck at
@@ -66,7 +71,13 @@ async def parse_artifact(
         # no error status, no indication anything went wrong, no retry path.
         # Re-raise after recording so arq's own failure logging still sees it.
         log.error("worker.parse_failed", artifact_id=artifact_id, error=str(exc), exc_info=True)
-        await _set_status(artifact_id, "error", error_reason=str(exc)[:1000])
+        # Recording the failure must never replace the real exception (e.g. if
+        # the DB itself is what failed, _set_status would raise too and the
+        # original error would be lost).
+        try:
+            await _set_status(artifact_id, "error", error_reason=str(exc)[:1000])
+        except Exception:
+            log.error("worker.set_error_status_failed", artifact_id=artifact_id, exc_info=True)
         raise
 
 
@@ -76,6 +87,7 @@ async def _parse_artifact_inner(
     filename: str,
     storage_path: str,
     artifact_type: str,
+    allow_oversized: bool = False,
 ) -> None:
     from backend.src.db.models import Chunk, SourceArtifact
     from backend.src.db.session import async_session_factory
@@ -94,12 +106,16 @@ async def _parse_artifact_inner(
         return
 
     # Document pipeline: Stages 1–6
-    triage = triage_document(filename, data)
+    # An oversized document is held for explicit confirmation (CLAUDE.md:
+    # "reject oversized docs with confirmation prompt"); the customer confirms
+    # via POST .../artifacts/{id}/confirm-oversized, which re-enqueues with
+    # allow_oversized=True and a raised (but still bounded) page cap.
+    triage = triage_document(filename, data, max_pages=5000) if allow_oversized else triage_document(filename, data)
     if triage.is_password_protected:
         log.error("worker.password_protected", artifact_id=artifact_id)
         await _set_status(artifact_id, "error_password_protected")
         return
-    if triage.is_oversized:
+    if triage.is_oversized and not allow_oversized:
         # triage_document already computed this (Stage 1) but nothing ever
         # checked it -- an oversized doc silently proceeded through the full
         # LLM-classification pipeline (Stage 4), burning the tenant's LLM
@@ -425,3 +441,8 @@ class WorkerSettings:
     redis_settings = _redis_settings()
     max_jobs = 4
     job_timeout = 600
+    # The pipeline is not idempotent (it inserts chunks and makes paid LLM
+    # calls), so arq's default of 5 automatic retries would duplicate chunks
+    # and cost on a transient failure. Failed artifacts end in status "error"
+    # and are re-run deliberately.
+    max_tries = 1
