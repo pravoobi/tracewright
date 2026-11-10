@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import AssumedSetupBadge, { SetupEntry } from "../components/AssumedSetupBadge";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
@@ -14,6 +15,8 @@ interface TestCard {
   introduced_in_version: string;
   locator_strategy: string | null;
   locator_suggestions: string[];
+  setup_manifest: SetupEntry[];
+  tier_sources: { assumed_setup?: number } | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,6 +68,9 @@ export function TestCatalog() {
                     ⚠ fragile locator
                   </span>
                 )}
+                <span className="ml-2">
+                  <AssumedSetupBadge tierSources={card.tier_sources} setupManifest={card.setup_manifest} />
+                </span>
               </td>
               <td className="px-3 py-2">{card.priority}</td>
               <td className="px-3 py-2 text-gray-500">{card.test_type}</td>

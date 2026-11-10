@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
+import AssumedSetupBadge, { SetupEntry } from "../components/AssumedSetupBadge";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
@@ -14,8 +15,8 @@ interface TestCard {
   priority: string;
   test_type: string;
   approval_status: string;
-  setup_manifest: object[];
-  tier_sources: { tier: number; confidence: number };
+  setup_manifest: SetupEntry[];
+  tier_sources: { tier: number; confidence: number; assumed_setup?: number };
   introduced_in_version: string;
 }
 
@@ -229,6 +230,7 @@ export function PlannerReview() {
                     <span className="text-xs text-gray-400">
                       v{card.introduced_in_version} · Tier {card.tier_sources?.tier}
                     </span>
+                    <AssumedSetupBadge tierSources={card.tier_sources} setupManifest={card.setup_manifest} />
                   </div>
 
                   {isEditing && editDraft ? (
