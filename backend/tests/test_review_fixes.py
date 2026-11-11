@@ -102,3 +102,35 @@ def test_legacy_master_key_ciphertext_still_decrypts(monkeypatch):
     assert sessions._decrypt_legacy(legacy) == b'{"cookies": []}'
     tenant = "00000000-0000-0000-0000-000000000001"
     assert sessions._decrypt(sessions._encrypt(b"hello", tenant), tenant) == b"hello"
+
+
+# --- derived flows validation --------------------------------------------------
+def test_validate_flows_keeps_only_wellformed_flows_on_crawled_urls():
+    from backend.src.agents.generator.flows import validate_flows
+
+    pages = [{"url": "http://app.test/cart", "snapshot": ""}]
+    raw = {
+        "pages": [
+            {"page_name": "CartPage", "url": "http://app.test/cart#x", "elements": [
+                {"semantic_name": "orderTotal", "role": None, "testid": "order-total"},
+                {"semantic_name": "applyButton", "role": "button", "name": "Apply"},
+                {"semantic_name": "bad name", "role": "button"},          # not camelCase
+                {"semantic_name": "evil", "role": "javascript"},          # unknown role
+                {"semantic_name": "noHint"},                              # no role/testid
+                "junk",
+            ]},
+            {"page_name": "cart", "url": "http://app.test/cart", "elements": [{"semantic_name": "a", "role": "button"}]},
+            {"page_name": "EvilPage", "url": "http://169.254.169.254/", "elements": [{"semantic_name": "a", "role": "button"}]},
+        ]
+    }
+    flows = validate_flows(raw, pages)
+    assert [f["page_name"] for f in flows] == ["CartPage"]
+    assert [e["semantic_name"] for e in flows[0]["elements"]] == ["orderTotal", "applyButton"]
+    assert flows[0]["url"] == "http://app.test/cart"
+
+
+def test_validate_flows_tolerates_garbage():
+    from backend.src.agents.generator.flows import validate_flows
+
+    assert validate_flows("nope", []) == []
+    assert validate_flows({"pages": "x"}, []) == []

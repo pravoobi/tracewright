@@ -70,11 +70,20 @@ async def compute_tenant_metrics(session: AsyncSession, tenant_id: str) -> dict[
     )
     edit_rate = (cards_edited / card_total) if card_total else None
 
-    # Locator verification pass rate — "pass" means the preferred
-    # role-based strategy resolved cleanly, no CSS/testid fallback needed
+    # Locator verification pass rate. Every emitted locator is verified against
+    # the live app (never emit an unverified one), so "pass" means a generated
+    # test relies only on locators with NO stability warning: role-based or
+    # data-testid. A card whose worst locator is css_warned still works but is
+    # flagged fragile, so it doesn't count. role_based is the stricter,
+    # accessibility-first subset.
     generated_total = await session.scalar(
         select(func.count()).select_from(TestCard).where(
             TestCard.tenant_id == tid, TestCard.locator_strategy.isnot(None)
+        )
+    )
+    stable_count = await session.scalar(
+        select(func.count()).select_from(TestCard).where(
+            TestCard.tenant_id == tid, TestCard.locator_strategy.in_(("role", "testid"))
         )
     )
     role_count = await session.scalar(
@@ -82,7 +91,7 @@ async def compute_tenant_metrics(session: AsyncSession, tenant_id: str) -> dict[
             TestCard.tenant_id == tid, TestCard.locator_strategy == "role"
         )
     )
-    locator_pass_rate = (role_count / generated_total) if generated_total else None
+    locator_pass_rate = (stable_count / generated_total) if generated_total else None
 
     return {
         "review_time": {
@@ -102,6 +111,7 @@ async def compute_tenant_metrics(session: AsyncSession, tenant_id: str) -> dict[
             "pass_rate": locator_pass_rate,
             "generated_total": generated_total,
             "role_based": role_count,
+            "stable": stable_count,
         },
     }
 

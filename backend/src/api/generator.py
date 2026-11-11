@@ -116,7 +116,9 @@ def _collect_suggestions(code: str, registry: "AppModelRegistry") -> list[str]:
 
 
 class BuildRegistryRequest(BaseModel):
-    test_card_flows: list[dict[str, Any]]
+    # Omit to derive the flows from the tenant's approved test cards (crawls
+    # the live app, see agents/generator/flows.py).
+    test_card_flows: list[dict[str, Any]] | None = None
 
 
 @router.post("/{tenant_id}/environments/{environment_id}/build-registry")
@@ -147,7 +149,43 @@ async def build_registry(
     from backend.src.agents.generator.app_model import _origin
 
     env_origin = _origin(env.url)
-    for flow in body.test_card_flows:
+
+    if body.test_card_flows is None:
+        from sqlalchemy import select
+
+        from backend.src.agents.generator.flows import derive_flows
+
+        rows = (
+            await session.scalars(
+                select(TestCard).where(
+                    TestCard.tenant_id == uuid.UUID(tenant_id),
+                    TestCard.approval_status == "approved",
+                )
+            )
+        ).all()
+        if not rows:
+            raise HTTPException(status_code=409, detail="No approved test cards to derive flows from")
+        flows = await derive_flows(
+            tenant_id,
+            environment_id,
+            env.url,
+            [
+                {
+                    "test_id": c.test_id,
+                    "title": c.title,
+                    "description": c.description,
+                    "preconditions": c.preconditions,
+                }
+                for c in rows
+            ],
+        )
+    else:
+        flows = body.test_card_flows
+    for flow in flows:
+        if not isinstance(flow.get("page_name"), str) or not flow["page_name"]:
+            # Missing names used to default to "UnknownPage" and silently
+            # persist a junk registry over a good one.
+            raise HTTPException(status_code=400, detail="Every flow needs a page_name")
         flow_url = flow.get("url")
         if flow_url is None or flow_url == "":
             continue  # defaults to the environment URL
@@ -163,12 +201,18 @@ async def build_registry(
         tenant_id=tenant_id,
         environment_id=environment_id,
         staging_url=env.url,
-        test_card_flows=body.test_card_flows,
+        test_card_flows=flows,
     )
 
     data = registry.to_dict()
-    requested = sum(len(f.get("elements", [])) for f in body.test_card_flows)
+    requested = sum(len(f.get("elements", [])) for f in flows)
     resolved = sum(len(po["locators"]) for po in data.values())
+    if resolved == 0:
+        # Don't overwrite a working registry with an empty one.
+        raise HTTPException(
+            status_code=422,
+            detail="No locators resolved; existing registry left unchanged",
+        )
 
     upload_file(
         registry_path(tenant_id, environment_id),
