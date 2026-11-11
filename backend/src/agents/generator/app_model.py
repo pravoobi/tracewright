@@ -97,11 +97,31 @@ async def build_app_model(
 
         async def _same_origin_navigations_only(route):
             request = route.request
-            if request.is_navigation_request() and _origin(request.url) != allowed_origin:
+            if not request.is_navigation_request():
+                await route.continue_()
+                return
+            if _origin(request.url) != allowed_origin:
                 log.warning("app_model.blocked_cross_origin_navigation", url=request.url)
                 await route.abort()
                 return
-            await route.continue_()
+            # continue_() lets the browser follow redirects internally WITHOUT
+            # re-running this handler (verified live: a 302 to another origin
+            # was followed). Fetch without following, check the Location
+            # ourselves, and hand the 3xx back so each hop is re-routed.
+            response = await route.fetch(max_redirects=0)
+            location = response.headers.get("location")
+            if 300 <= response.status < 400 and location:
+                from urllib.parse import urljoin
+
+                if _origin(urljoin(request.url, location)) != allowed_origin:
+                    log.warning(
+                        "app_model.blocked_cross_origin_redirect",
+                        url=request.url,
+                        location=location,
+                    )
+                    await route.abort()
+                    return
+            await route.fulfill(response=response)
 
         await context.route("**/*", _same_origin_navigations_only)
 
