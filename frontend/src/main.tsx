@@ -2,29 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import axios from "axios";
+import { AuthProvider, useAuth } from "./auth";
+import { Login } from "./pages/Login";
 import { IngestionReview } from "./pages/IngestionReview";
 import { PlannerReview } from "./pages/PlannerReview";
 import { EnvironmentDashboard } from "./pages/EnvironmentDashboard";
 import { TestCatalog } from "./pages/TestCatalog";
 import "./index.css";
-
-// Every backend router requires X-API-Key (see backend/src/auth/api_key.py).
-// Set once, globally, rather than threading it through every axios call in
-// every page/component.
-const apiKey = import.meta.env.VITE_TENANT_API_KEY;
-if (apiKey) {
-  if (import.meta.env.PROD) {
-    // VITE_* values are inlined into the public bundle: this key is visible to
-    // every visitor. Acceptable for local dev only.
-    console.warn("VITE_TENANT_API_KEY is embedded in this production bundle and is publicly readable.");
-  }
-  axios.defaults.headers.common["X-API-Key"] = apiKey;
-} else {
-  console.warn(
-    "VITE_TENANT_API_KEY is not set — all API requests will fail with 401."
-  );
-}
 
 const qc = new QueryClient();
 
@@ -36,6 +20,7 @@ const nav = [
 ];
 
 function App() {
+  const { logout, state } = useAuth();
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex gap-6">
@@ -52,6 +37,12 @@ function App() {
             {label}
           </NavLink>
         ))}
+        <span className="ml-auto flex items-center gap-3 text-sm text-gray-600">
+          {state.status === "authed" && <span>{state.email}</span>}
+          <button onClick={() => void logout()} className="text-indigo-700 hover:underline">
+            Sign out
+          </button>
+        </span>
       </nav>
       <main className="py-8">
         <Routes>
@@ -65,11 +56,20 @@ function App() {
   );
 }
 
+function Gate() {
+  const { state } = useAuth();
+  if (state.status === "loading") return null;
+  if (state.status === "anon") return <Login />;
+  return <App />;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={qc}>
       <BrowserRouter>
-        <App />
+        <AuthProvider>
+          <Gate />
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>

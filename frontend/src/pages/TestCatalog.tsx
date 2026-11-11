@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { useTenantId } from "../auth";
 import AssumedSetupBadge, { SetupEntry } from "../components/AssumedSetupBadge";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
 
 interface TestCard {
   id: string;
@@ -27,6 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function TestCatalog() {
+  const TENANT_ID = useTenantId();
   const { data: cards = [], isLoading } = useQuery<TestCard[]>({
     queryKey: ["test-cards-all", TENANT_ID],
     queryFn: () =>

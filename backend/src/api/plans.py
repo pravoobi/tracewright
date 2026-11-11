@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,13 @@ class GeneratePlanRequest(BaseModel):
     # with it. 50 comfortably covers legitimate feature-area queries per the
     # retrieval design (top_k=15 default).
     top_k: int = Field(default=15, ge=1, le=50)
+
+
+def _approver(request: Request, supplied: str | None) -> str | None:
+    """Who approved. A logged-in browser user is recorded from the SESSION --
+    never from the request body, which a client could set to anyone. The body
+    value is only honoured for API-key (machine) callers, which have no user."""
+    return getattr(request.state, "user_email", None) or supplied
 
 
 class ReviewCardAction(BaseModel):
@@ -102,6 +109,7 @@ async def review_card(
     tenant_id: str,
     card_id: str,
     body: ReviewCardAction,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     from datetime import datetime, timezone
@@ -116,7 +124,7 @@ async def review_card(
         "review_duration_ms": body.review_duration_ms,
     }
     if body.action == "approve":
-        values["approved_by"] = body.approved_by
+        values["approved_by"] = _approver(request, body.approved_by)
         values["approved_at"] = datetime.now(timezone.utc)
     if body.edits:
         for field, val in body.edits.items():
@@ -140,6 +148,7 @@ async def review_card(
 async def bulk_review_cards(
     tenant_id: str,
     body: BulkCardAction,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     from datetime import datetime, timezone
@@ -148,7 +157,7 @@ async def bulk_review_cards(
     card_uuids = [uuid.UUID(cid) for cid in body.card_ids]
     values: dict[str, Any] = {"approval_status": status_map[body.action]}
     if body.action == "approve":
-        values["approved_by"] = body.approved_by
+        values["approved_by"] = _approver(request, body.approved_by)
         values["approved_at"] = datetime.now(timezone.utc)
 
     await session.execute(

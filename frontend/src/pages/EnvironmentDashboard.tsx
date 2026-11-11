@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { useTenantId } from "../auth";
 import { CoverageStats } from "../components/CoverageStats";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
 
 interface Environment {
   id: string;
@@ -16,6 +16,7 @@ interface Environment {
 }
 
 export function EnvironmentDashboard() {
+  const TENANT_ID = useTenantId();
   const { data: envs = [], isLoading } = useQuery<Environment[]>({
     queryKey: ["environments", TENANT_ID],
     queryFn: () =>

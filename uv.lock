@@ -56,6 +56,7 @@ source = { virtual = "backend" }
 dependencies = [
     { name = "alembic" },
     { name = "anthropic" },
+    { name = "argon2-cffi" },
     { name = "arq" },
     { name = "asyncpg" },
     { name = "cryptography" },
@@ -109,6 +110,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14.0" },
     { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "arq", specifier = ">=0.26.1" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "cryptography", specifier = ">=44.0.0" },

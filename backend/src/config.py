@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     # Per-tenant LLM cost guard (USD/day; 0 = unlimited)
     default_tenant_daily_llm_budget_usd: float = Field(default=0.0)
 
+    # Browser login sessions (cookie-based; see auth/user_session.py)
+    cors_allowed_origins: list[str] = Field(
+        default=["http://localhost:5173", "http://localhost:3000"]
+    )
+    session_cookie_name: str = Field(default="tw_session")
+    # Set true behind HTTPS (required for any non-local deployment).
+    session_cookie_secure: bool = Field(default=False)
+    session_idle_minutes: int = Field(default=120)
+    session_absolute_hours: int = Field(default=12)
+
     # OpenTelemetry
     otel_exporter_otlp_endpoint: str = Field(default="http://localhost:4318")
     service_name: str = Field(default="agent-testing-backend")

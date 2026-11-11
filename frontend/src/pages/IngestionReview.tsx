@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
+import { useTenantId } from "../auth";
 import { ColumnMapper } from "../components/ColumnMapper";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-const TENANT_ID = import.meta.env.VITE_TENANT_ID || "default-tenant";
 
 interface Chunk {
   id: string;
@@ -26,6 +26,7 @@ interface Artifact {
 }
 
 export function IngestionReview() {
+  const TENANT_ID = useTenantId();
   const qc = useQueryClient();
   const [reviewStartTimes, setReviewStartTimes] = useState<Record<string, number>>({});
 

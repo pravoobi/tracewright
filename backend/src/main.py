@@ -23,6 +23,7 @@ if sys.platform == "win32":
     # build-registry endpoint (real Playwright browser launch) needs this.
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+from backend.src.api.auth import router as auth_router
 from backend.src.api.environments import router as environments_router
 from backend.src.api.generator import router as generator_router
 from backend.src.api.ingestion import router as ingestion_router
@@ -51,7 +52,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,6 +78,7 @@ async def tenant_budget_exceeded_handler(request: Request, exc: TenantBudgetExce
     return JSONResponse(status_code=429, content={"detail": str(exc)})
 
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(upload_router, prefix="/api/v1")
 app.include_router(ingestion_router, prefix="/api/v1")
 app.include_router(plans_router, prefix="/api/v1")
