@@ -68,6 +68,44 @@ def _origin(url: str) -> tuple[str, str, int | None]:
     return scheme, (u.hostname or "").lower(), port
 
 
+async def restrict_to_origin(context, staging_url: str) -> None:
+    """Abort any navigation (initial URL, flow URL, or redirect hop) that leaves
+    staging_url's origin -- e.g. an open redirect on the app, or a 302 to a
+    cloud metadata address. Checking only the initial URL string is not enough:
+    every hop passes through this handler."""
+    from urllib.parse import urljoin
+
+    allowed_origin = _origin(staging_url)
+
+    async def _same_origin_navigations_only(route):
+        request = route.request
+        if not request.is_navigation_request():
+            await route.continue_()
+            return
+        if _origin(request.url) != allowed_origin:
+            log.warning("app_model.blocked_cross_origin_navigation", url=request.url)
+            await route.abort()
+            return
+        # continue_() lets the browser follow redirects internally WITHOUT
+        # re-running this handler (verified live: a 302 to another origin
+        # was followed). Fetch without following, check the Location
+        # ourselves, and hand the 3xx back so each hop is re-routed.
+        response = await route.fetch(max_redirects=0)
+        location = response.headers.get("location")
+        if 300 <= response.status < 400 and location:
+            if _origin(urljoin(request.url, location)) != allowed_origin:
+                log.warning(
+                    "app_model.blocked_cross_origin_redirect",
+                    url=request.url,
+                    location=location,
+                )
+                await route.abort()
+                return
+        await route.fulfill(response=response)
+
+    await context.route("**/*", _same_origin_navigations_only)
+
+
 async def build_app_model(
     tenant_id: str,
     environment_id: str,
@@ -89,41 +127,8 @@ async def build_app_model(
         context = await browser.new_context(storage_state=storage_state)
 
         # The decrypted auth cookies are loaded into this browser, so it must
-        # never be steered off the environment's registered origin -- by a flow
-        # URL, or by a redirect (e.g. an open redirect on the app, or a 302 to a
-        # cloud metadata address). Checking only the initial URL string is not
-        # enough: every navigation hop, including redirects, passes through this.
-        allowed_origin = _origin(staging_url)
-
-        async def _same_origin_navigations_only(route):
-            request = route.request
-            if not request.is_navigation_request():
-                await route.continue_()
-                return
-            if _origin(request.url) != allowed_origin:
-                log.warning("app_model.blocked_cross_origin_navigation", url=request.url)
-                await route.abort()
-                return
-            # continue_() lets the browser follow redirects internally WITHOUT
-            # re-running this handler (verified live: a 302 to another origin
-            # was followed). Fetch without following, check the Location
-            # ourselves, and hand the 3xx back so each hop is re-routed.
-            response = await route.fetch(max_redirects=0)
-            location = response.headers.get("location")
-            if 300 <= response.status < 400 and location:
-                from urllib.parse import urljoin
-
-                if _origin(urljoin(request.url, location)) != allowed_origin:
-                    log.warning(
-                        "app_model.blocked_cross_origin_redirect",
-                        url=request.url,
-                        location=location,
-                    )
-                    await route.abort()
-                    return
-            await route.fulfill(response=response)
-
-        await context.route("**/*", _same_origin_navigations_only)
+        # never be steered off the environment's registered origin.
+        await restrict_to_origin(context, staging_url)
 
         for flow in test_card_flows:
             page_name = flow.get("page_name", "UnknownPage")
