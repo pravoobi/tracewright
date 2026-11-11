@@ -1,4 +1,4 @@
-# CLAUDE.md — AI Agent-Based Testing Tool
+# CLAUDE.md — Tracewright (AI agent-based testing tool)
 
 ## Project overview
 
@@ -370,7 +370,7 @@ Dashboard warns: "production deployed v2.4 on May 20, but latest requirements do
 ## Project structure
 
 ```
-ai-test-agent/
+tracewright/
 ├── CLAUDE.md
 ├── docker-compose.yml                 # Postgres+pgvector, MinIO, Redis, Langfuse, Jaeger
 ├── pyproject.toml                     # uv workspaces

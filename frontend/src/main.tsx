@@ -39,7 +39,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex gap-6">
-        <span className="font-bold text-indigo-700 mr-4">AI Test Agent</span>
+        <span className="font-bold text-indigo-700 mr-4">Tracewright</span>
         {nav.map(({ to, label }) => (
           <NavLink
             key={to}

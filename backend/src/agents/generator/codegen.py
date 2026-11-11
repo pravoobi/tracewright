@@ -162,14 +162,14 @@ def assumed_setup_entries(manifest: list[Any] | None) -> list[dict[str, Any]]:
 
 def _build_metadata_header(card: dict[str, Any]) -> str:
     lines = [
-        "// ─── AI Test Agent — Generated Test ───────────────────────────────────────",
+        "// ─── Tracewright — Generated Test ───────────────────────────────────────",
         f"// Test Card ID : {card.get('test_id', 'unknown')}",
         f"// Title        : {card.get('title', '')}",
         f"// Source AC    : {card.get('source_logical_id', 'N/A')}",
         f"// Priority     : {card.get('priority', '')}",
         f"// Type         : {card.get('test_type', '')}",
         "// ─────────────────────────────────────────────────────────────────────────",
-        "// DO NOT EDIT locators manually — regenerate via the AI test agent.",
+        "// DO NOT EDIT locators manually — regenerate via Tracewright.",
     ]
     assumed = assumed_setup_entries(card.get("setup_manifest"))
     if assumed:
