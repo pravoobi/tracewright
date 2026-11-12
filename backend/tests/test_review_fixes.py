@@ -245,5 +245,5 @@ def test_reset_path_must_be_same_origin_absolute_path():
 
     assert valid_reset_path("/reset") and valid_reset_path("/api/test/reset?x=1")
     for bad in (None, "", "reset", "//evil.test/reset", "http://evil.test/reset",
-                "/a b", "/a\r\nHost: x", "/\evil", "/" + "a" * 300):
+                "/a b", "/a\r\nHost: x", "/\\evil", "/" + "a" * 300):
         assert not valid_reset_path(bad), bad
