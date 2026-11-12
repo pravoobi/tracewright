@@ -33,6 +33,7 @@ from backend.src.api.tests import router as tests_router
 from backend.src.api.upload import router as upload_router
 from backend.src.config import settings
 from backend.src.llm.cost import TenantBudgetExceededError
+from backend.src.upload_limit import UploadSizeLimitMiddleware
 
 log = structlog.get_logger()
 
@@ -58,19 +59,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def reject_oversized_uploads(request: Request, call_next):
-    """The upload handler's byte-count limit only runs AFTER the framework has
-    already spooled the whole multipart body to disk. Reject on the declared
-    Content-Length first so an oversized upload is refused before it is read.
-    (A chunked request with no Content-Length can still bypass this; a
-    reverse proxy body-size limit is the complete fix for that case.)"""
-    if request.method == "POST" and request.url.path.startswith("/api/v1/upload/"):
-        declared = request.headers.get("content-length")
-        # Multipart framing adds a little overhead over the file itself.
-        if declared and declared.isdigit() and int(declared) > settings.max_upload_size_bytes + 1_048_576:
-            return JSONResponse(status_code=413, content={"detail": "Upload exceeds maximum size"})
-    return await call_next(request)
+app.add_middleware(
+    UploadSizeLimitMiddleware, max_bytes_getter=lambda: settings.max_upload_size_bytes
+)
 
 
 @app.exception_handler(TenantBudgetExceededError)
