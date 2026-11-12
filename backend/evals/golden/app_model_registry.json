@@ -2,43 +2,139 @@
   "CartPage": {
     "url_pattern": "http://localhost:4000/cart",
     "locators": {
-      "discountCodeInput": "page.getByRole(\"textbox\", { name: \"Discount code\" })",
-      "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
-      "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
-      "orderTotal": "page.getByTestId(\"order-total\")",
-      "discountSummary": "page.getByTestId(\"discount-summary\")",
+      "logoutButton": "page.getByRole(\"button\", { name: \"Log out\" })",
+      "cartHeading": "page.getByRole(\"heading\", { name: \"Your Cart\" })",
       "widgetQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Widget\" })",
       "gadgetQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Gadget\" })",
       "stickerQuantityInput": "page.getByRole(\"spinbutton\", { name: \"Quantity for Sticker\" })",
       "updateCartButton": "page.getByRole(\"button\", { name: \"Update cart\" })",
-      "errorAlert": "page.getByRole(\"alert\")"
+      "discountCodeInput": "page.getByRole(\"textbox\", { name: \"Discount code\" })",
+      "applyDiscountButton": "page.getByRole(\"button\", { name: \"Apply discount code\" })",
+      "orderTotal": "page.getByTestId(\"order-total\")",
+      "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
+      "discountSummary": "page.getByTestId(\"discount-summary\")",
+      "discountStatusMessage": "page.getByRole(\"status\")",
+      "cartErrorAlert": "page.getByRole(\"alert\")"
     },
     "locator_strategies": {
-      "discountCodeInput": "role",
-      "applyDiscountButton": "role",
-      "proceedToCheckoutButton": "role",
-      "orderTotal": "testid",
-      "discountSummary": "testid",
+      "logoutButton": "role",
+      "cartHeading": "role",
       "widgetQuantityInput": "role",
       "gadgetQuantityInput": "role",
       "stickerQuantityInput": "role",
       "updateCartButton": "role",
-      "errorAlert": "role"
+      "discountCodeInput": "role",
+      "applyDiscountButton": "role",
+      "orderTotal": "testid",
+      "proceedToCheckoutButton": "role",
+      "discountSummary": "testid",
+      "discountStatusMessage": "role",
+      "cartErrorAlert": "role"
     },
     "warnings": [],
-    "suggestions": {}
+    "suggestions": {},
+    "requires_state": {
+      "discountSummary": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/cart"
+        },
+        {
+          "action": "fill",
+          "role": "textbox",
+          "name": "Discount code",
+          "testid": null,
+          "value": "SAVE20"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Apply discount code",
+          "testid": null
+        }
+      ],
+      "discountStatusMessage": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/cart"
+        },
+        {
+          "action": "fill",
+          "role": "textbox",
+          "name": "Discount code",
+          "testid": null,
+          "value": "SAVE20"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Apply discount code",
+          "testid": null
+        }
+      ],
+      "cartErrorAlert": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/cart"
+        },
+        {
+          "action": "fill",
+          "role": "textbox",
+          "name": "Discount code",
+          "testid": null,
+          "value": "BOGUS123"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Apply discount code",
+          "testid": null
+        }
+      ]
+    }
   },
   "CheckoutPage": {
     "url_pattern": "http://localhost:4000/checkout",
     "locators": {
+      "logoutButton": "page.getByRole(\"button\", { name: \"Log out\" })",
+      "checkoutHeading": "page.getByRole(\"heading\", { name: \"Checkout\" })",
       "placeOrderButton": "page.getByRole(\"button\", { name: \"Place order\" })",
-      "orderTotal": "page.getByTestId(\"order-total\")"
+      "orderTotal": "page.getByTestId(\"order-total\")",
+      "discountSummary": "page.getByTestId(\"discount-summary\")"
     },
     "locator_strategies": {
+      "logoutButton": "role",
+      "checkoutHeading": "role",
       "placeOrderButton": "role",
-      "orderTotal": "testid"
+      "orderTotal": "testid",
+      "discountSummary": "testid"
     },
     "warnings": [],
-    "suggestions": {}
+    "suggestions": {},
+    "requires_state": {
+      "discountSummary": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/cart"
+        },
+        {
+          "action": "fill",
+          "role": "textbox",
+          "name": "Discount code",
+          "testid": null,
+          "value": "SAVE20"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Apply discount code",
+          "testid": null
+        },
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/checkout"
+        }
+      ]
+    }
   }
 }

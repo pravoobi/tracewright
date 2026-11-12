@@ -1,0 +1,179 @@
+{
+  "environment_url": "http://localhost:4000",
+  "cards": [
+    {
+      "test_id": "TC-001",
+      "title": "Apply valid discount code as authenticated user",
+      "description": "Verify that an authenticated user can apply a valid discount code at checkout and that the order total is reduced by the percentage specified in the discount record.",
+      "preconditions": "User is logged in with a valid session; a valid discount code exists with a defined percentage; cart contains at least one item totaling more than $10.00.",
+      "setup_manifest": [
+        {
+          "role": "authenticated_customer",
+          "type": "user"
+        },
+        {
+          "code": "SAVE10",
+          "type": "discount_code",
+          "active": true,
+          "percentage": 10
+        },
+        {
+          "type": "cart",
+          "items": [
+            {
+              "sku": "SKU-100",
+              "quantity": 1,
+              "price_usd": 50.0
+            }
+          ]
+        }
+      ],
+      "test_type": "functional",
+      "priority": "P0",
+      "traceability": [
+        {
+          "type": "chunk",
+          "logical_id": "REQ-d8ed22fa69dc"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-003",
+      "title": "Verify order total reduction matches discount percentage exactly",
+      "description": "Verify that applying a valid discount code (SAVE10, 10%) reduces the order subtotal by exactly that percentage.",
+      "preconditions": "User is authenticated; discount code SAVE10 (10%) exists; cart subtotal is $55.00 and exceeds $10.00.",
+      "setup_manifest": [
+        {
+          "role": "authenticated_customer",
+          "type": "user"
+        },
+        {
+          "code": "SAVE10",
+          "type": "discount_code",
+          "active": true,
+          "percentage": 10
+        },
+        {
+          "type": "cart",
+          "items": [
+            {
+              "sku": "widget",
+              "quantity": 1,
+              "price_usd": 30.0
+            },
+            {
+              "sku": "gadget",
+              "quantity": 1,
+              "price_usd": 20.0
+            },
+            {
+              "sku": "sticker",
+              "quantity": 1,
+              "price_usd": 5.0
+            }
+          ]
+        }
+      ],
+      "test_type": "functional",
+      "priority": "P0",
+      "traceability": [
+        {
+          "type": "chunk",
+          "logical_id": "REQ-d8ed22fa69dc"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-004",
+      "title": "Display applied discount code and percentage on checkout summary",
+      "description": "Verify that after successfully applying a discount code, the checkout summary displays both the discount code and its percentage before the user confirms the order.",
+      "preconditions": "User is authenticated; a valid discount code has been applied to an eligible order.",
+      "setup_manifest": [
+        {
+          "role": "authenticated_customer",
+          "type": "user"
+        },
+        {
+          "code": "SAVE10",
+          "type": "discount_code",
+          "active": true,
+          "percentage": 10
+        },
+        {
+          "type": "cart",
+          "items": [
+            {
+              "sku": "SKU-100",
+              "quantity": 1,
+              "price_usd": 50.0
+            }
+          ]
+        }
+      ],
+      "test_type": "functional",
+      "priority": "P1",
+      "traceability": [
+        {
+          "type": "chunk",
+          "logical_id": "REQ-bc4a140d9ea3"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-005",
+      "title": "Prevent duplicate application of the same discount code on one order",
+      "description": "Verify that attempting to apply the same discount code a second time to the same order is rejected, ensuring a discount code is applied only once per order.",
+      "preconditions": "User is authenticated; a discount code has already been successfully applied to the current order.",
+      "setup_manifest": [
+        {
+          "role": "authenticated_customer",
+          "type": "user"
+        },
+        {
+          "code": "SAVE10",
+          "type": "discount_code",
+          "active": true,
+          "percentage": 10
+        },
+        {
+          "type": "order",
+          "state": "in_progress",
+          "total_usd": 50.0,
+          "applied_discount_code": "SAVE10"
+        }
+      ],
+      "test_type": "negative",
+      "priority": "P1",
+      "traceability": [
+        {
+          "type": "chunk",
+          "logical_id": "REQ-b8a87b822e87"
+        }
+      ]
+    },
+    {
+      "test_id": "TC-008",
+      "title": "Prevent checkout when cart contains zero items",
+      "description": "Verify that the system prevents checkout when the cart is empty, per the cart limits requirement: the checkout link and a direct visit to /checkout both return the user to the cart with an error.",
+      "preconditions": "User has an active cart with zero items.",
+      "setup_manifest": [
+        {
+          "role": "authenticated_customer",
+          "type": "user"
+        },
+        {
+          "type": "cart",
+          "items": []
+        }
+      ],
+      "test_type": "negative",
+      "priority": "P0",
+      "traceability": [
+        {
+          "type": "chunk",
+          "logical_id": "REQ-51ebe9df0ecc"
+        }
+      ]
+    }
+  ]
+}

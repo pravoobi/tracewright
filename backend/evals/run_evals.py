@@ -92,15 +92,16 @@ async def eval_product_metrics(tenant_id: str) -> dict[str, Any]:
     }
 
 
-async def main() -> None:
+async def main(classification_only: bool = False) -> None:
     labels = load_golden_labels()
     results: dict[str, Any] = {}
 
     classification = await eval_classification_accuracy(labels)
     results.update(classification)
 
-    product_metrics = await eval_product_metrics(DEV_TENANT_ID)
-    results.update(product_metrics)
+    if not classification_only:  # these read the local dev database
+        product_metrics = await eval_product_metrics(DEV_TENANT_ID)
+        results.update(product_metrics)
 
     print("\n=== Eval Results ===")
     for k, v in results.items():
@@ -122,4 +123,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+
+    # --classification-only: just the golden-set classifier check (no database), for CI.
+    asyncio.run(main(classification_only="--classification-only" in sys.argv))

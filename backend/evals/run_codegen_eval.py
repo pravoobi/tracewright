@@ -3,6 +3,13 @@
     uv run python -m backend.evals.run_codegen_eval [--cards TC-001,TC-003]
         [--baseline backend/evals/results/codegen-baseline.json]
         [--min-pass-rate 0.8] [--save-baseline]
+        [--golden [--base-url http://localhost:4000]]
+
+--golden is the hermetic mode used in CI: cards and the page-object registry
+come from backend/evals/golden/ (codegen_cards.json, app_model_registry.json)
+instead of the dev database and MinIO, and the demo app is logged into
+directly. It needs only the demo app running, Playwright (Python and the
+scaffold's), and the LLM key.
 
 For every approved card of the dev tenant that traces to a requirement, this
 generates the spec exactly as the product does (generate_test_file: safety
@@ -113,6 +120,44 @@ async def _load_inputs(tenant_id: str, only: set[str] | None):
         except Exception as e:
             raise SystemExit(f"No registry for environment {env.id}: build it first ({e})")
     return env, out, registry
+
+
+GOLDEN_DIR = Path(__file__).parent / "golden"
+
+
+def _load_inputs_golden(only: set[str] | None):
+    """Cards + registry from the committed golden files; no DB or object store."""
+    from types import SimpleNamespace
+
+    cards_file = json.loads((GOLDEN_DIR / "codegen_cards.json").read_text(encoding="utf-8"))
+    cards = [c for c in cards_file["cards"] if not only or c["test_id"] in only]
+    registry = AppModelRegistry.from_dict(
+        json.loads((GOLDEN_DIR / "app_model_registry.json").read_text(encoding="utf-8"))
+    )
+    return SimpleNamespace(url=cards_file["environment_url"], id="golden"), cards, registry
+
+
+async def _login_demo_session(base_url: str) -> Path:
+    """Log into the demo app (public seeded demo credentials) and write the
+    storage state where the scaffold fixture expects it."""
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            page = await browser.new_page()
+            await page.goto(f"{base_url}/login")
+            await page.get_by_label("Email").fill("test@example.com")
+            await page.get_by_label("Password").fill("password123")
+            await page.get_by_role("button", name="Log in").click()
+            await page.wait_for_url(f"{base_url}/cart")
+            state = await page.context.storage_state()
+        finally:
+            await browser.close()
+    path = SCAFFOLD / ".auth" / "demo-app.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return path
 
 
 def _check_reachable(url: str) -> None:
@@ -278,17 +323,27 @@ async def main() -> int:
     ap.add_argument("--tenant-id", default=DEV_TENANT_ID)
     ap.add_argument("--cards", help="comma-separated test ids (default: all approved, linked)")
     ap.add_argument("--baseline", help="JSON file of a previous summary to compare against")
+    ap.add_argument("--golden", action="store_true", help="use backend/evals/golden/ instead of the dev DB/MinIO")
+    ap.add_argument("--base-url", help="with --golden: where the demo app is running (default: the golden file's URL)")
     ap.add_argument("--min-pass-rate", type=float, default=0.8)
     ap.add_argument("--save-baseline", action="store_true", help="write this run to results/codegen-baseline.json")
     args = ap.parse_args()
 
     _install_retry_counter()
     only = set(args.cards.split(",")) if args.cards else None
-    env, cards, registry = await _load_inputs(args.tenant_id, only)
+    if args.golden:
+        env, cards, registry = _load_inputs_golden(only)
+        if args.base_url:
+            env.url = args.base_url.rstrip("/")
+    else:
+        env, cards, registry = await _load_inputs(args.tenant_id, only)
     if not cards:
         raise SystemExit("No approved, requirement-linked cards to evaluate")
     _check_reachable(env.url)
-    storage_state = _export_session(args.tenant_id, str(env.id))
+    if args.golden:
+        storage_state = await _login_demo_session(env.url)
+    else:
+        storage_state = _export_session(args.tenant_id, str(env.id))
 
     spec_dir = SCAFFOLD / "tests" / f"_eval_{int(time.time())}"
     spec_dir.mkdir(parents=True)

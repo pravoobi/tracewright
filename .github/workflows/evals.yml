@@ -1,0 +1,195 @@
+name: Evals
+
+# "No eval, no merge" (CLAUDE.md): changes to the pipeline's prompts, parsers,
+# generator or models must not regress either eval.
+#   classification  50 hand-labelled golden chunks through the real classifier
+#   codegen         approved golden cards -> generated specs -> run against the
+#                   demo app; pass rate must not drop below the committed baseline
+# Both call the LLM, so they need the ANTHROPIC_API_KEY repository secret.
+# Pull requests from forks don't receive secrets: the jobs then report
+# "skipped" instead of failing, so a maintainer must run them (workflow_dispatch)
+# before merging such a PR.
+
+on:
+  pull_request:
+    paths:
+      - "backend/src/ingestion/**"
+      - "backend/src/agents/**"
+      - "backend/src/llm/**"
+      - "backend/src/config.py"
+      - "backend/evals/**"
+      - "demo-app/**"
+      - "test-scaffold/**"
+      - ".github/workflows/evals.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/src/ingestion/**"
+      - "backend/src/agents/**"
+      - "backend/src/llm/**"
+      - "backend/evals/**"
+  workflow_dispatch:
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/agent_testing
+  HF_HUB_DISABLE_SYMLINKS: "1"
+
+jobs:
+  classification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agent_testing
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for LLM key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); classification eval skipped"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install backend
+        if: steps.key.outputs.present == 'true'
+        run: uv sync --frozen --all-packages
+
+      - name: Prepare database
+        if: steps.key.outputs.present == 'true'
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d agent_testing \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+          PYTHONPATH=. uv run --frozen --project backend alembic -c backend/alembic.ini upgrade head
+          uv run --frozen python scripts/seed-dev-db.py
+
+      - name: Classification eval
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run --frozen python -m backend.evals.run_evals --classification-only
+
+  codegen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agent_testing
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for LLM key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); codegen eval skipped"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: pnpm/action-setup@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          node-version: "20"
+
+      - name: Install backend
+        if: steps.key.outputs.present == 'true'
+        run: uv sync --frozen --all-packages
+
+      - name: Install Playwright (Python, used to log into the demo app)
+        if: steps.key.outputs.present == 'true'
+        run: uv run --frozen playwright install --with-deps chromium
+
+      - name: Install scaffold (the specs under test)
+        if: steps.key.outputs.present == 'true'
+        working-directory: test-scaffold
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Prepare database
+        if: steps.key.outputs.present == 'true'
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d agent_testing \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+          PYTHONPATH=. uv run --frozen --project backend alembic -c backend/alembic.ini upgrade head
+          uv run --frozen python scripts/seed-dev-db.py
+
+      - name: Start demo app
+        if: steps.key.outputs.present == 'true'
+        working-directory: demo-app
+        run: |
+          pnpm install --frozen-lockfile
+          nohup node src/server.js > ../demo-app.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:4000/login > /dev/null && exit 0
+            sleep 1
+          done
+          echo "demo app did not start"; cat ../demo-app.log; exit 1
+
+      - name: Codegen eval
+        if: steps.key.outputs.present == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # The golden registry's page URLs are http://localhost:4000, so the
+          # login cookie and the specs must use that same host.
+          uv run --frozen python -m backend.evals.run_codegen_eval --golden \
+            --baseline backend/evals/results/codegen-baseline.json
+
+      - name: Upload eval results
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: codegen-eval-results
+          path: backend/evals/results/codegen-latest.json
+          if-no-files-found: ignore
+          retention-days: 14
