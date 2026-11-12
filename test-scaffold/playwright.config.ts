@@ -3,10 +3,13 @@ import path from "path";
 
 export default defineConfig({
   testDir: "./tests",
-  fullyParallel: true,
+  // Serial by default: generated tests share one captured session, so
+  // server-side state (cart, discounts) is shared. Raise workers only if your
+  // app gives each test its own isolated data/session.
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: [
     ["html"],
     ["json", { outputFile: "test-results/results.json" }],
