@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,37 @@ def _import_allowed(spec: str) -> bool:
     return spec.startswith(_ALLOWED_IMPORT_PREFIXES) and ".." not in spec[3:].split("/")
 
 
+_SCAFFOLD_FIXTURES_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "..", "test-scaffold", "fixtures"
+)
+
+
+def available_fixtures() -> list[str]:
+    try:
+        return sorted(
+            f[: -len(".ts")] for f in os.listdir(_SCAFFOLD_FIXTURES_DIR) if f.endswith(".ts")
+        )
+    except OSError:
+        return []
+
+
+def unresolved_imports(
+    code: str, page_object_names: set[str], fixtures: list[str]
+) -> list[str]:
+    """Allowed-prefix imports that point at nothing: a page object that is not
+    in the registry, or a fixture file that does not exist. The safety check
+    only vets the path prefix, so a hallucinated `../page-objects/cart.page`
+    passed it and then failed at load time."""
+    problems = []
+    for match in _IMPORT_STATEMENT.finditer(code):
+        spec = match.group(1)
+        if spec.startswith("../page-objects/") and spec.split("/")[-1] not in page_object_names:
+            problems.append(spec)
+        elif spec.startswith("../fixtures/") and spec.split("/")[-1] not in fixtures:
+            problems.append(spec)
+    return problems
+
+
 def check_generated_code_safety(code: str) -> list[str]:
     """Deny-list scan over LLM-generated test code before it's written to
     the customer's git-tracked test scaffold. The Planner and Generator both
@@ -101,6 +133,11 @@ Rules:
   Never present such values as established facts; keep them in one clearly named constant
   near the top of the test and add a `// Setup assumption:` comment saying the customer
   must provide/confirm that data. Entries marked "document" are grounded in the requirements.
+- The environment's fixture only guarantees a logged-in user with the app's DEFAULT data. If the setup
+  manifest names data the registry's controls can establish (e.g. a cart's item quantities via quantity
+  inputs and an update button), establish it at the start of the test through those page-object
+  members, under a `// Setup:` comment, instead of assuming it is already there. Data no registry
+  control can create stays a named constant with a `// Setup assumption:` comment.
 - Each test file starts with metadata comments linking to the test card ID and source artifacts.
 - Use TypeScript with strict types.
 - Use async/await throughout.
@@ -125,14 +162,39 @@ async def generate_test_file(
         f"Generate the test file."
     )
 
-    code = await complete(
-        messages=[{"role": "user", "content": prompt}],
-        model=settings.planner_model,
-        tenant_id=tenant_id,
-        feature="codegen",
-        system=_CODEGEN_SYSTEM,
-        max_tokens=4096,
-    )
+    page_objects = set(registry.pages)
+    fixtures = available_fixtures()
+    messages = [{"role": "user", "content": prompt}]
+    for attempt in (1, 2):
+        code = await complete(
+            messages=messages,
+            model=settings.planner_model,
+            tenant_id=tenant_id,
+            feature="codegen",
+            system=_CODEGEN_SYSTEM,
+            max_tokens=4096,
+        )
+        bad = unresolved_imports(code, page_objects, fixtures)
+        if not bad:
+            break
+        log.warning("codegen.unresolved_imports", test_id=test_card.get("test_id"), imports=bad, attempt=attempt)
+        if attempt == 2:
+            raise UnsafeGeneratedCodeError(
+                f"Generated code for {test_card.get('test_id', 'unknown')} imports modules that "
+                f"do not exist: {', '.join(bad)}"
+            )
+        messages = messages + [
+            {"role": "assistant", "content": code},
+            {
+                "role": "user",
+                "content": (
+                    f"These imports do not exist: {', '.join(bad)}. Page objects you may import "
+                    f"(from '../page-objects/<Name>'): {', '.join(sorted(page_objects))}. "
+                    f"Fixtures (from '../fixtures/<name>'): {', '.join(fixtures)}. "
+                    "Return the corrected file only."
+                ),
+            },
+        ]
 
     # Prepend mandatory metadata header
     header = _build_metadata_header(test_card)

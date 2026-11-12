@@ -263,3 +263,17 @@ def test_rebase_scaffold_imports_only_touches_scaffold_paths():
     assert 'from "../../page-objects/CartPage"' in out
     assert 'from "@playwright/test"' in out
     assert "// see ../fixtures/in-a-comment" in out
+
+
+def test_unresolved_imports_flags_hallucinated_modules():
+    from backend.src.agents.generator.codegen import unresolved_imports
+
+    code = (
+        "import { test } from '../fixtures/authenticated-cart.fixture';\n"
+        "import { CartPage } from '../page-objects/CartPage';\n"
+        "import { Other } from '../page-objects/cart.page';\n"
+        "import { F } from '../fixtures/nope';\n"
+        'import { x } from "@playwright/test";\n'
+    )
+    bad = unresolved_imports(code, {"CartPage"}, ["authenticated-cart.fixture"])
+    assert bad == ["../page-objects/cart.page", "../fixtures/nope"]
