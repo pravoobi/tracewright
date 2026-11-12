@@ -61,3 +61,5 @@ langfuse-data/
 backend/evals/golden/*.pdf
 backend/evals/golden/*.xlsx
 backend/evals/golden/*.docx
+
+backend/evals/results/codegen-latest.json

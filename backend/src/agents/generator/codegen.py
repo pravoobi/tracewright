@@ -85,6 +85,27 @@ def unresolved_imports(
     return problems
 
 
+_PAGE_OBJECT_INSTANCE = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*new\s+(\w+)\s*\(")
+_BASE_PAGE_MEMBERS = {"url_pattern", "goto", "waitForNetworkIdle"}
+
+
+def unresolved_page_object_members(code: str, registry: AppModelRegistry) -> list[str]:
+    """`cart.discountBanner` where the registry's CartPage has no such locator:
+    the spec would compile only if the member existed, and the registry is what
+    was verified against the live app, so an unknown member is an unverified
+    (invented) locator. Returns "CartPage.discountBanner" entries."""
+    problems: list[str] = []
+    for var, cls in _PAGE_OBJECT_INSTANCE.findall(code):
+        po = registry.pages.get(cls)
+        if po is None:
+            continue  # unknown class is reported by unresolved_imports
+        allowed = set(po.locators) | _BASE_PAGE_MEMBERS
+        for member in dict.fromkeys(re.findall(rf"\b{re.escape(var)}\.(\w+)", code)):
+            if member not in allowed:
+                problems.append(f"{cls}.{member}")
+    return problems
+
+
 def check_generated_code_safety(code: str) -> list[str]:
     """Deny-list scan over LLM-generated test code before it's written to
     the customer's git-tracked test scaffold. The Planner and Generator both
@@ -174,21 +195,24 @@ async def generate_test_file(
             system=_CODEGEN_SYSTEM,
             max_tokens=4096,
         )
-        bad = unresolved_imports(code, page_objects, fixtures)
+        bad = unresolved_imports(code, page_objects, fixtures) + unresolved_page_object_members(
+            code, registry
+        )
         if not bad:
             break
         log.warning("codegen.unresolved_imports", test_id=test_card.get("test_id"), imports=bad, attempt=attempt)
         if attempt == 2:
             raise UnsafeGeneratedCodeError(
-                f"Generated code for {test_card.get('test_id', 'unknown')} imports modules that "
-                f"do not exist: {', '.join(bad)}"
+                f"Generated code for {test_card.get('test_id', 'unknown')} uses imports "
+                f"or page-object members that do not exist: {', '.join(bad)}"
             )
         messages = messages + [
             {"role": "assistant", "content": code},
             {
                 "role": "user",
                 "content": (
-                    f"These imports do not exist: {', '.join(bad)}. Page objects you may import "
+                    f"These imports or page-object members do not exist: {', '.join(bad)}. "
+                    f"Page objects you may import "
                     f"(from '../page-objects/<Name>'): {', '.join(sorted(page_objects))}. "
                     f"Fixtures (from '../fixtures/<name>'): {', '.join(fixtures)}. "
                     "Return the corrected file only."

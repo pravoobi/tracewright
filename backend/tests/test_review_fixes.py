@@ -277,3 +277,20 @@ def test_unresolved_imports_flags_hallucinated_modules():
     )
     bad = unresolved_imports(code, {"CartPage"}, ["authenticated-cart.fixture"])
     assert bad == ["../page-objects/cart.page", "../fixtures/nope"]
+
+
+def test_unresolved_page_object_members_flags_invented_locators():
+    from backend.src.agents.generator.app_model import AppModelRegistry, PageObject
+    from backend.src.agents.generator.codegen import unresolved_page_object_members
+
+    reg = AppModelRegistry(pages={"CartPage": PageObject(
+        name="CartPage", url_pattern="http://app/cart",
+        locators={"orderTotal": 'page.getByTestId("order-total")'})})
+    code = (
+        "const cart = new CartPage(page);\n"
+        "await page.goto(cart.url_pattern);\n"
+        "await expect(cart.orderTotal).toBeVisible();\n"
+        "await expect(cart.discountBanner).toBeVisible();\n"
+        "const other = new Unknown(page); other.x;\n"
+    )
+    assert unresolved_page_object_members(code, reg) == ["CartPage.discountBanner"]
