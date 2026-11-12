@@ -19,10 +19,11 @@ from typing import Any, TYPE_CHECKING
 from fastapi import APIRouter, Depends, HTTPException
 from minio.error import S3Error
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.auth.api_key import require_tenant_access
-from backend.src.db.models import Environment, TestCard
+from backend.src.db.models import Environment, TestCard, TraceabilityLink
 from backend.src.db.session import get_session
 
 if TYPE_CHECKING:
@@ -274,6 +275,8 @@ class GenerateRequest(BaseModel):
     # supplied by the customer; the generated file then lists every
     # assumption in its header.
     acknowledge_assumed_setup: bool = Field(default=False)
+    # Explicit opt-out of the no-orphan-tests rule (e.g. hand-authored spike cards).
+    allow_unlinked: bool = Field(default=False)
     # Which environment's page-object registry to generate against.
     environment_id: str | None = None
 
@@ -326,6 +329,29 @@ async def generate_card_test(
             "(POST /generator/{tenant_id}/environments/{environment_id}/build-registry)",
         )
 
+    links = (
+        await session.scalars(
+            select(TraceabilityLink)
+            .where(
+                TraceabilityLink.test_card_id == card.id,
+                TraceabilityLink.tenant_id == card.tenant_id,
+            )
+            .order_by(TraceabilityLink.linked_type, TraceabilityLink.linked_logical_id)
+        )
+    ).all()
+    # No orphan tests: a card must trace to at least one source requirement.
+    if not any(link.linked_type == "chunk" for link in links) and not (
+        body and body.allow_unlinked
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Test card has no traceability link to a source requirement. Link it to a "
+                "requirement chunk, or retry with allow_unlinked=true (the file header will "
+                "say UNLINKED)."
+            ),
+        )
+
     test_card_dict = {
         "test_id": card.test_id,
         "title": card.title,
@@ -334,7 +360,10 @@ async def generate_card_test(
         "setup_manifest": card.setup_manifest,
         "test_type": card.test_type,
         "priority": card.priority,
-        "source_logical_id": None,
+        "traceability": [
+            {"type": link.linked_type, "logical_id": link.linked_logical_id}
+            for link in links
+        ],
     }
 
     try:

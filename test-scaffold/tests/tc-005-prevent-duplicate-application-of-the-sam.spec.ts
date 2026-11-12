@@ -1,7 +1,8 @@
-// ─── AI Test Agent — Generated Test ───────────────────────────────────────
+// ─── Tracewright — Generated Test ───────────────────────────────────────
 // Test Card ID : TC-005
 // Title        : Prevent duplicate application of the same discount code on one order
-// Source AC    : None
+// Source AC    : REQ-b8a87b822e87
+// Regresses    : none
 // Priority     : P1
 // Type         : negative
 // ─────────────────────────────────────────────────────────────────────────

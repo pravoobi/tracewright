@@ -160,12 +160,27 @@ def assumed_setup_entries(manifest: list[Any] | None) -> list[dict[str, Any]]:
     return [e for e in (manifest or []) if isinstance(e, dict) and e.get("source") == "assumed"]
 
 
+def _trace_ids(card: dict[str, Any], linked_type: str) -> str:
+    """Comma-joined logical ids of the card's traceability links of one type.
+    Bug ids come from a customer spreadsheet and chunk ids from LLM-era data,
+    so strip anything that could break out of a one-line comment."""
+    ids = [
+        re.sub(r"[^\w.:/ -]", "", str(link.get("logical_id", "")))
+        for link in card.get("traceability") or []
+        if link.get("type") == linked_type
+    ]
+    if linked_type == "chunk" and not ids and card.get("source_logical_id"):
+        ids = [re.sub(r"[^\w.:/ -]", "", str(card["source_logical_id"]))]
+    return ", ".join(i for i in ids if i)
+
+
 def _build_metadata_header(card: dict[str, Any]) -> str:
     lines = [
         "// ─── Tracewright — Generated Test ───────────────────────────────────────",
         f"// Test Card ID : {card.get('test_id', 'unknown')}",
         f"// Title        : {card.get('title', '')}",
-        f"// Source AC    : {card.get('source_logical_id', 'N/A')}",
+        f"// Source AC    : {_trace_ids(card, 'chunk') or 'UNLINKED (no source requirement)'}",
+        f"// Regresses    : {_trace_ids(card, 'bug') or 'none'}",
         f"// Priority     : {card.get('priority', '')}",
         f"// Type         : {card.get('test_type', '')}",
         "// ─────────────────────────────────────────────────────────────────────────",

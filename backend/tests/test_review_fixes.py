@@ -134,3 +134,25 @@ def test_validate_flows_tolerates_garbage():
 
     assert validate_flows("nope", []) == []
     assert validate_flows({"pages": "x"}, []) == []
+
+
+def test_header_lists_every_traceability_link_and_flags_orphans():
+    from backend.src.agents.generator.codegen import _build_metadata_header
+
+    linked = _build_metadata_header(
+        {
+            "test_id": "TC-1",
+            "title": "t",
+            "traceability": [
+                {"type": "chunk", "logical_id": "REQ-a1"},
+                {"type": "chunk", "logical_id": "REQ-b2"},
+                {"type": "bug", "logical_id": "BUG-9\n// injected"},
+            ],
+        }
+    )
+    assert "Source AC    : REQ-a1, REQ-b2" in linked
+    assert "Regresses    : BUG-9// injected" in linked
+    assert "\n// injected" not in linked  # newline can't break out of the comment
+
+    orphan = _build_metadata_header({"test_id": "TC-2", "title": "t", "traceability": []})
+    assert "Source AC    : UNLINKED" in orphan

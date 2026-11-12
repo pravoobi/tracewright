@@ -1,7 +1,8 @@
-// ─── AI Test Agent — Generated Test ───────────────────────────────────────
+// ─── Tracewright — Generated Test ───────────────────────────────────────
 // Test Card ID : TC-001
 // Title        : Apply valid discount code as authenticated user
-// Source AC    : None
+// Source AC    : REQ-d8ed22fa69dc
+// Regresses    : none
 // Priority     : P0
 // Type         : functional
 // ─────────────────────────────────────────────────────────────────────────

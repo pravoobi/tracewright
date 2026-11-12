@@ -1,7 +1,8 @@
-// ─── AI Test Agent — Generated Test ───────────────────────────────────────
+// ─── Tracewright — Generated Test ───────────────────────────────────────
 // Test Card ID : TC-DISCOUNT-001
 // Title        : Applying a 20% discount code at checkout reduces a $50 cart to $40
-// Source AC    : None
+// Source AC    : UNLINKED (no source requirement)
+// Regresses    : none
 // Priority     : P1
 // Type         : functional
 // ─────────────────────────────────────────────────────────────────────────
