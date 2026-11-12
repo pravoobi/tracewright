@@ -1,0 +1,63 @@
+name: Tests
+
+# Fast, hermetic checks on every PR and push to main: no database, no LLM key,
+# no network services. (The LLM-backed evals live in evals.yml.)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install backend
+        run: uv sync --frozen --all-packages
+
+      - name: Unit tests
+        # Deliberately no DATABASE_URL / ANTHROPIC_API_KEY: the suite must not
+        # need them, so an accidental dependency on either fails here.
+        run: uv run --frozen python -m pytest backend/tests -c backend/pyproject.toml --rootdir . -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # `pnpm run build` is `tsc && vite build`: typecheck, then bundle.
+      # (`pnpm run lint` is not run: the frontend has no ESLint config yet.)
+      - name: Typecheck and build
+        run: pnpm run build
