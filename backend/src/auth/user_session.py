@@ -55,9 +55,9 @@ def hash_token(raw: str) -> str:
 
 
 # --- login throttling ------------------------------------------------------------
-# In-process (per worker) -- enough to blunt online guessing on a single
-# instance; put a shared limiter (Redis / reverse proxy) in front for a
-# multi-replica deployment.
+# The *_shared functions below are what the API uses: Redis-backed so the limit
+# holds across replicas and restarts. The in-process functions are the
+# fallback when Redis is unavailable (or login_throttle_backend="memory").
 _MAX_FAILURES = 5
 _WINDOW_SECONDS = 15 * 60
 _failures: dict[tuple[str, str], deque[float]] = defaultdict(deque)
@@ -81,6 +81,66 @@ def record_login_failure(email: str, ip: str) -> None:
 
 def clear_login_failures(email: str, ip: str) -> None:
     _failures.pop((email, ip), None)
+
+
+# Shared (Redis) limiter: counters survive restarts and are common to every
+# replica. Fixed window starting at the first failure. If Redis is unreachable
+# we fall back to the in-process limiter above rather than failing logins
+# (closed) or dropping the throttle entirely (open).
+_redis_client = None
+
+
+def _redis():
+    global _redis_client
+    if settings.login_throttle_backend != "redis":
+        return None
+    if _redis_client is None:
+        import redis.asyncio as aioredis
+
+        _redis_client = aioredis.from_url(
+            settings.redis_url, socket_timeout=1.0, socket_connect_timeout=1.0
+        )
+    return _redis_client
+
+
+def _redis_key(email: str, ip: str) -> str:
+    return "login_fail:" + hashlib.sha256(f"{email}\n{ip}".encode()).hexdigest()
+
+
+async def login_throttled_shared(email: str, ip: str) -> bool:
+    client = _redis()
+    if client is not None:
+        try:
+            raw = await client.get(_redis_key(email, ip))
+            return int(raw or 0) >= _MAX_FAILURES
+        except Exception:
+            pass
+    return login_throttled(email, ip)
+
+
+async def record_login_failure_shared(email: str, ip: str) -> None:
+    client = _redis()
+    if client is not None:
+        try:
+            key = _redis_key(email, ip)
+            pipe = client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, _WINDOW_SECONDS, nx=True)
+            await pipe.execute()
+            return
+        except Exception:
+            pass
+    record_login_failure(email, ip)
+
+
+async def clear_login_failures_shared(email: str, ip: str) -> None:
+    clear_login_failures(email, ip)
+    client = _redis()
+    if client is not None:
+        try:
+            await client.delete(_redis_key(email, ip))
+        except Exception:
+            pass
 
 
 # --- sessions ----------------------------------------------------------------------

@@ -57,16 +57,16 @@ async def login(
         raise HTTPException(status_code=403, detail="Origin not allowed")
 
     email, ip = body.email.strip().lower(), _client_ip(request)
-    if user_session.login_throttled(email, ip):
+    if await user_session.login_throttled_shared(email, ip):
         raise HTTPException(status_code=429, detail="Too many failed attempts; try again later")
 
     user = await user_session.authenticate(session, email, body.password)
     if user is None:
-        user_session.record_login_failure(email, ip)
+        await user_session.record_login_failure_shared(email, ip)
         # Same message for unknown account, wrong password and disabled account.
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    user_session.clear_login_failures(email, ip)
+    await user_session.clear_login_failures_shared(email, ip)
     raw, auth_session = await user_session.create_session(session, user)
     _set_cookie(response, raw)
     return _identity(user, auth_session)

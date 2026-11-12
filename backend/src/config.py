@@ -31,6 +31,9 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = Field(default="redis://localhost:6379")
+    # "redis" (shared across replicas; falls back to in-process if Redis is down)
+    # or "memory" (per-process only).
+    login_throttle_backend: str = Field(default="redis")
 
     # Langfuse
     langfuse_secret_key: str = Field(default="")
