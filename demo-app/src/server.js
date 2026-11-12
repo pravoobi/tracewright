@@ -164,6 +164,14 @@ app.post("/cart/discount", requireAuth, (req, res) => {
     return res.redirect("/cart");
   }
 
+  // A discount code may only be applied once per order (REQ: "applied once
+  // per order"): re-submitting the code already on the order is rejected, not
+  // silently accepted again.
+  if (req.session.discount && req.session.discount.code === discount.code) {
+    setFlash(req, "error", `Discount code ${discount.code} is already applied to this order.`);
+    return res.redirect("/cart");
+  }
+
   req.session.discount = discount;
   setFlash(req, "success", `Discount code ${discount.code} applied: ${discount.percentOff}% off.`);
   res.redirect("/cart");

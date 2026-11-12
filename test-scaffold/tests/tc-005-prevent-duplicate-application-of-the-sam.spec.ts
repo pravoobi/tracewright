@@ -6,47 +6,62 @@
 // Priority     : P1
 // Type         : negative
 // ─────────────────────────────────────────────────────────────────────────
-// DO NOT EDIT locators manually — regenerate via the AI test agent.
+// DO NOT EDIT locators manually — regenerate via Tracewright.
 
-/**
- * Test Card: TC-005
- * Title: Prevent duplicate application of the same discount code on one order
- * Priority: P1
- * Type: Negative
- *
- * Source artifacts:
- * - Page Object Registry: CartPage, CheckoutPage
- * - Fixture: ../fixtures/authenticated-cart.fixture
- */
+// Test ID: TC-005
+// Title: Prevent duplicate application of the same discount code on one order
+// Source: REQ-b8a87b822e87
+// Precondition: User is authenticated; a discount code has already been
+// successfully applied to the current order.
 
-import { test, expect } from '../fixtures/authenticated-cart.fixture';
-import { CartPage } from '../page-objects/CartPage';
+import { test, expect } from "../fixtures/authenticated-cart.fixture";
+import { CartPage } from "../page-objects/CartPage";
 
-test.describe('TC-005: Prevent duplicate application of the same discount code on one order', () => {
-  test('rejects re-applying an already-applied discount code to the same order', async ({ page }) => {
+// Setup assumption: the setup manifest describes an order that already has
+// SAVE10 applied before the test begins. No API/DB seeding hook is available
+// in the registry to pre-apply a discount directly, so this test reproduces
+// that precondition by applying the code once via the UI before attempting
+// the duplicate application. The customer should confirm that SAVE10 is a
+// valid, active 10% discount code in the target environment.
+const DISCOUNT_CODE = "SAVE10";
+
+test.describe("TC-005: Prevent duplicate application of the same discount code", () => {
+  test("rejects applying the same discount code a second time on one order", async ({ page }) => {
     const cartPage = new CartPage(page);
 
-    // Set up the test card's stated precondition ourselves: the fixture only
-    // guarantees an authenticated user with a clean cart, not an arbitrary
-    // per-test discount state, so "SAVE10 already applied" has to be applied
-    // here rather than assumed.
     await page.goto(cartPage.url_pattern);
-    await cartPage.discountCodeInput.fill('SAVE10');
+
+    // Verify: cart page loaded correctly for an authenticated user
+    await expect(cartPage.cartHeading).toBeVisible();
+
+    // Capture the order total before any discount is applied, for later comparison.
+    const totalBeforeDiscount = await cartPage.orderTotal.textContent();
+
+    // Apply the discount code the first time to establish the required precondition.
+    await cartPage.discountCodeInput.fill(DISCOUNT_CODE);
     await cartPage.applyDiscountButton.click();
 
-    // Verify: discount summary confirms the discount code is already applied before attempting duplication
-    await expect(cartPage.discountSummary).toBeVisible();
+    // Verify: the first application of the discount code succeeds
+    await expect(cartPage.discountStatusMessage).toBeVisible();
+    await expect(cartPage.discountStatusMessage).toContainText(/applied/i);
 
-    const totalBeforeSecondAttempt = await cartPage.orderTotal.textContent();
+    const totalAfterFirstApply = await cartPage.orderTotal.textContent();
 
-    // Attempt to apply the same discount code a second time
-    await cartPage.discountCodeInput.fill('SAVE10');
+    // Verify: order total reflects the discount being applied once
+    expect(totalAfterFirstApply).not.toEqual(totalBeforeDiscount);
+
+    // Attempt to apply the exact same discount code a second time.
+    await cartPage.discountCodeInput.fill(DISCOUNT_CODE);
     await cartPage.applyDiscountButton.click();
 
-    // Verify: the system does not allow the discount code to be applied twice — only one discount line remains
-    await expect(cartPage.discountSummary).toHaveCount(1);
+    // Verify: the system rejects the duplicate application with an error/alert
+    await expect(cartPage.cartErrorAlert).toBeVisible();
+    await expect(cartPage.cartErrorAlert).toContainText(/already applied|duplicate|only.*once/i);
 
-    // Verify: the order total remains unchanged, confirming no additional discount was applied
-    await expect(cartPage.orderTotal).toHaveText(totalBeforeSecondAttempt ?? '');
+    const totalAfterSecondAttempt = await cartPage.orderTotal.textContent();
+
+    // Verify: the order total is unchanged by the rejected duplicate attempt,
+    // confirming the discount was not applied twice (no stacked discount)
+    expect(totalAfterSecondAttempt).toEqual(totalAfterFirstApply);
   });
 });
