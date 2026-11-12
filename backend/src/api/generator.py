@@ -120,6 +120,15 @@ class BuildRegistryRequest(BaseModel):
     # Omit to derive the flows from the tenant's approved test cards (crawls
     # the live app, see agents/generator/flows.py).
     test_card_flows: list[dict[str, Any]] | None = None
+    # Also reach and verify elements that only exist after an action (a
+    # confirmation summary, an error alert). This CLICKS AND FILLS in the live
+    # environment (harmless actions only, see state_probe.py) and so changes
+    # server-side state there; off unless the caller asks for it.
+    explore_states: bool = False
+    # Same-origin path (e.g. "/reset") POSTed before each probe/replay so every
+    # state starts from the same server-side data. Without it, probes that change
+    # data (empty the cart) leak into the ones after them.
+    reset_path: str | None = None
 
 
 @router.post("/{tenant_id}/environments/{environment_id}/build-registry")
@@ -151,6 +160,11 @@ async def build_registry(
 
     env_origin = _origin(env.url)
 
+    from backend.src.agents.generator.state_probe import valid_reset_path
+
+    if body.reset_path is not None and not valid_reset_path(body.reset_path):
+        raise HTTPException(status_code=400, detail="reset_path must be a same-origin absolute path like /reset")
+
     if body.test_card_flows is None:
         from sqlalchemy import select
 
@@ -179,6 +193,8 @@ async def build_registry(
                 }
                 for c in rows
             ],
+            explore_states=body.explore_states,
+            reset_path=body.reset_path,
         )
     else:
         flows = body.test_card_flows
@@ -203,6 +219,7 @@ async def build_registry(
         environment_id=environment_id,
         staging_url=env.url,
         test_card_flows=flows,
+        reset_path=body.reset_path,
     )
 
     data = registry.to_dict()

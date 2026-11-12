@@ -156,3 +156,94 @@ def test_header_lists_every_traceability_link_and_flags_orphans():
 
     orphan = _build_metadata_header({"test_id": "TC-2", "title": "t", "traceability": []})
     assert "Source AC    : UNLINKED" in orphan
+
+
+# --- state-dependent elements (state_probe / flows) -------------------------
+
+CARDS = "Apply code SAVE10 on the cart. Applying an invalid code BOGUS shows an error."
+
+
+def test_validate_steps_accepts_harmless_fill_and_click():
+    from backend.src.agents.generator.state_probe import validate_steps
+
+    steps = validate_steps(
+        [
+            {"action": "fill", "role": "textbox", "name": "Discount code", "value": "SAVE10"},
+            {"action": "click", "role": "button", "name": "Apply discount code"},
+        ],
+        CARDS,
+    )
+    assert steps and steps[0]["value"] == "SAVE10" and steps[1]["action"] == "click"
+
+
+def test_validate_steps_refuses_unsafe_or_ungrounded_steps():
+    from backend.src.agents.generator.state_probe import validate_steps
+
+    click = lambda name: [{"action": "click", "role": "button", "name": name}]  # noqa: E731
+    for bad in ("Place order", "Delete account", "Sign out", "Pay now", "Reset cart"):
+        assert validate_steps(click(bad)) is None, bad
+    # testid of a destructive control is judged too
+    assert validate_steps([{"action": "click", "role": None, "name": None, "testid": "delete-btn"}]) is None
+    # fill value: quoted from the cards, or inert text; never markup/script
+    inert = [{"action": "fill", "role": "textbox", "name": "Discount code", "value": "BOGUS123"}]
+    assert validate_steps(inert, CARDS)
+    hostile = [{"action": "fill", "role": "textbox", "name": "Discount code", "value": "<script>x</script>"}]
+    assert validate_steps(hostile, CARDS) is None
+    # goto only to URLs the caller allows
+    go = [{"action": "goto", "url": "http://app/checkout"}]
+    assert validate_steps(go) is None
+    assert validate_steps(go, url_ok=lambda u: u.startswith("http://app/"))
+    assert validate_steps([{"action": "goto", "url": "http://evil/x"}], url_ok=lambda u: u.startswith("http://app/")) is None
+    # unknown action, bad role, too many steps, empty
+    assert validate_steps([{"action": "goto", "role": "button", "name": "x"}]) is None
+    assert validate_steps([{"action": "click", "role": "textbox", "name": "x"}]) is None
+    assert validate_steps(click("ok") * 8) is None
+    assert validate_steps([]) is None
+
+
+def test_validate_probes_only_on_crawled_urls_and_drops_unsafe():
+    from backend.src.agents.generator.state_probe import validate_probes
+
+    pages = [{"url": "http://app/cart", "snapshot": "x"}]
+    good = {"state": "discountApplied", "url": "http://app/cart",
+            "steps": [{"action": "fill", "role": "textbox", "name": "Discount code", "value": "SAVE10"}]}
+    raw = {"probes": [
+        good,
+        {**good, "state": "offSite", "url": "http://evil/cart"},
+        {**good, "state": "bad", "steps": [{"action": "click", "role": "button", "name": "Place order"}]},
+        {**good, "state": "Bad-Name"},
+    ]}
+    out = validate_probes(raw, pages, CARDS)
+    assert [p["state_id"] for p in out] == ["discountApplied"]
+    # every reach starts with a goto to its (crawled) start page
+    assert out[0]["steps"][0] == {"action": "goto", "url": "http://app/cart"}
+
+
+def test_validate_flows_state_reach_comes_from_probe_not_llm():
+    from backend.src.agents.generator.flows import validate_flows
+
+    steps = [{"action": "click", "role": "button", "name": "Apply", "testid": None}]
+    pages = [
+        {"url": "http://app/cart", "snapshot": "x"},
+        {"url": "http://app/cart", "snapshot": "y", "state_id": "applied", "reach": steps},
+    ]
+    raw = {"pages": [{"page_name": "CartPage", "url": "http://app/cart", "elements": [
+        {"semantic_name": "total", "role": None, "testid": "order-total"},
+        # LLM tries to smuggle its own action list alongside a real state name
+        {"semantic_name": "summary", "role": None, "testid": "discount-summary",
+         "state": "applied", "reach": [{"action": "click", "name": "Place order"}]},
+        {"semantic_name": "ghost", "role": None, "testid": "ghost", "state": "nope"},
+    ]}]}
+    els = {e["semantic_name"]: e for e in validate_flows(raw, pages)[0]["elements"]}
+    assert "reach" not in els["total"]
+    assert els["summary"]["reach"] == steps  # ours, not the LLM's
+    assert "ghost" not in els  # unknown state: dropped
+
+
+def test_reset_path_must_be_same_origin_absolute_path():
+    from backend.src.agents.generator.state_probe import valid_reset_path
+
+    assert valid_reset_path("/reset") and valid_reset_path("/api/test/reset?x=1")
+    for bad in (None, "", "reset", "//evil.test/reset", "http://evil.test/reset",
+                "/a b", "/a\r\nHost: x", "/\evil", "/" + "a" * 300):
+        assert not valid_reset_path(bad), bad
