@@ -247,3 +247,19 @@ def test_reset_path_must_be_same_origin_absolute_path():
     for bad in (None, "", "reset", "//evil.test/reset", "http://evil.test/reset",
                 "/a b", "/a\r\nHost: x", "/\\evil", "/" + "a" * 300):
         assert not valid_reset_path(bad), bad
+
+
+def test_rebase_scaffold_imports_only_touches_scaffold_paths():
+    from backend.src.agents.generator.codegen import rebase_scaffold_imports
+
+    src = (
+        "import { test } from '../fixtures/a.fixture';\n"
+        'import { CartPage } from "../page-objects/CartPage";\n'
+        'import { x } from "@playwright/test";\n'
+        "// see ../fixtures/in-a-comment\n"
+    )
+    out = rebase_scaffold_imports(src)
+    assert "from '../../fixtures/a.fixture'" in out
+    assert 'from "../../page-objects/CartPage"' in out
+    assert 'from "@playwright/test"' in out
+    assert "// see ../fixtures/in-a-comment" in out

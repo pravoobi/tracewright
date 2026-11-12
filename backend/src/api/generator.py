@@ -309,6 +309,7 @@ async def generate_card_test(
         UnsafeGeneratedCodeError,
         assumed_setup_entries,
         generate_test_file,
+        rebase_scaffold_imports,
         safe_filename,
     )
     from sqlalchemy import update
@@ -409,7 +410,7 @@ async def generate_card_test(
         raise HTTPException(status_code=400, detail="Invalid generated filename")
 
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write(code)
+        f.write(rebase_scaffold_imports(code))
 
     relative_path = os.path.join("test-scaffold", "tests", str(uuid.UUID(tenant_id)), filename)
     await session.execute(

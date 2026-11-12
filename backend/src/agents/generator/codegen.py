@@ -153,6 +153,18 @@ async def generate_test_file(
     return full_code
 
 
+def rebase_scaffold_imports(code: str, extra_levels: int = 1) -> str:
+    """Specs are written one directory deeper (tests/<tenant>/) than the
+    prompt assumes (tests/), so `../fixtures/x` must become `../../fixtures/x`
+    or the spec cannot find its fixtures and page objects."""
+    up = "../" * extra_levels
+    return re.sub(
+        r"""(from\s+['"])(\.\./)(fixtures|page-objects)/""",
+        lambda m: f"{m.group(1)}{up}{m.group(2)}{m.group(3)}/",
+        code,
+    )
+
+
 def assumed_setup_entries(manifest: list[Any] | None) -> list[dict[str, Any]]:
     """Setup-manifest entries the Planner marked (or the grounding check
     downgraded to) "assumed". Cards from before provenance tracking have no
