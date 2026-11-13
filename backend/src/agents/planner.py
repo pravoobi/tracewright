@@ -45,6 +45,33 @@ async def generate_test_plan(
         bug_severity_filter=["P0", "P1", "Sev1", "Sev2", "1", "2"],
     )
 
+    plan = await plan_from_context(tenant_id, feature_area, doc_version, context)
+
+    if tracer:
+        tracer.update(
+            output={"test_cards": len(plan["test_cards"]), "gaps": len(plan["coverage_gaps"])}
+        )
+
+    log.info(
+        "planner.done",
+        tenant_id=tenant_id,
+        test_cards=len(plan["test_cards"]),
+        gaps=len(plan["coverage_gaps"]),
+        flags=len(plan["clarification_flags"]),
+    )
+    return plan
+
+
+async def plan_from_context(
+    tenant_id: str,
+    feature_area: str,
+    doc_version: str,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """The LLM half of planning: retrieved {"chunks", "bugs"} -> plan dict.
+
+    Split from retrieval so the planner eval can feed it golden chunks directly
+    (no database, no embeddings) and measure only the planning step."""
     user_prompt = _build_prompt(feature_area, doc_version, context)
 
     raw = await complete(
@@ -60,22 +87,7 @@ async def generate_test_plan(
         # producing zero test cards (caught, but only after burning the call).
         max_tokens=16384,
     )
-
-    plan = _parse_plan(raw, doc_version, source_text=_context_text(context))
-
-    if tracer:
-        tracer.update(
-            output={"test_cards": len(plan["test_cards"]), "gaps": len(plan["coverage_gaps"])}
-        )
-
-    log.info(
-        "planner.done",
-        tenant_id=tenant_id,
-        test_cards=len(plan["test_cards"]),
-        gaps=len(plan["coverage_gaps"]),
-        flags=len(plan["clarification_flags"]),
-    )
-    return plan
+    return _parse_plan(raw, doc_version, source_text=_context_text(context))
 
 
 def _build_prompt(feature_area: str, doc_version: str, context: dict[str, Any]) -> str:

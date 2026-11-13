@@ -3,6 +3,9 @@ name: Evals
 # "No eval, no merge" (CLAUDE.md): changes to the pipeline's prompts, parsers,
 # generator or models must not regress either eval.
 #   classification  50 hand-labelled golden chunks through the real classifier
+#   planner         golden chunks + bug export -> test plan: AC coverage, valid
+#                   traceability, bug links, flagged contradictions, prompt-injection
+#                   resistance (runs in the classification job: same setup)
 #   codegen         approved golden cards -> generated specs -> run against the
 #                   demo app; pass rate must not drop below the committed baseline
 # Both call the LLM, so they need the ANTHROPIC_API_KEY repository secret.
@@ -97,6 +100,21 @@ jobs:
       - name: Classification eval
         if: steps.key.outputs.present == 'true'
         run: uv run --frozen python -m backend.evals.run_evals --classification-only
+
+      - name: Planner eval
+        if: steps.key.outputs.present == 'true'
+        run: uv run --frozen python -m backend.evals.run_planner_eval
+
+      - name: Upload eval results
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: classification-planner-eval-results
+          path: |
+            backend/evals/results/classification-latest.json
+            backend/evals/results/planner-latest.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   codegen:
     runs-on: ubuntu-latest
