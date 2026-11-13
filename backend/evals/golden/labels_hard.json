@@ -1,0 +1,662 @@
+[
+  {
+    "id": "hard-001",
+    "source_doc": "returns",
+    "hint_block_type": "heading",
+    "content": "Returns & Refunds Service — Requirements Specification",
+    "expected_type": "metadata",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "document title"
+  },
+  {
+    "id": "hard-002",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Version 3.1 — 12 June 2025",
+    "expected_type": "metadata",
+    "page_number": 1,
+    "difficulty": "ambiguous",
+    "rationale": "version/date stamp; could be read as document control"
+  },
+  {
+    "id": "hard-003",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Document ID: RR-SPEC-031 | Status: Approved | Review date: 2025-12-01",
+    "expected_type": "metadata",
+    "page_number": 1,
+    "difficulty": "ambiguous",
+    "rationale": "document identification line"
+  },
+  {
+    "id": "hard-004",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Return merchandise authorization (RMA): A unique code issued by the system that authorizes a customer to send an item back.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "standard",
+    "rationale": "definition with a colon"
+  },
+  {
+    "id": "hard-005",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Restocking fee: A percentage of the item price withheld from a refund when a returned item has been opened.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "ambiguous",
+    "rationale": "definition that embeds a rule-like clause"
+  },
+  {
+    "id": "hard-006",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "The system shall allow a customer to initiate a return from the order history page for any delivered order.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "classic shall"
+  },
+  {
+    "id": "hard-007",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "The system shall issue an RMA code and display it to the customer after a return is submitted.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "classic shall"
+  },
+  {
+    "id": "hard-008",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Given a return has been marked as received, when a warehouse operator confirms inspection, then the system shall issue a refund to the original payment method.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "Given/When/Then"
+  },
+  {
+    "id": "hard-009",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "The system shall send the customer a confirmation email containing the RMA code within 1 minute of return submission.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "shall with a measurable bound"
+  },
+  {
+    "id": "hard-010",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "The system shall prevent a return from being initiated for an order that has not yet been delivered.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "negative-path shall"
+  },
+  {
+    "id": "hard-011",
+    "source_doc": "returns",
+    "hint_block_type": "list_item",
+    "content": "Customers can filter their return history by status (pending, received, refunded).",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5,
+    "difficulty": "ambiguous",
+    "rationale": "testable behaviour without 'shall'; list item"
+  },
+  {
+    "id": "hard-012",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Items may be returned within 30 days of delivery.",
+    "expected_type": "business_rule",
+    "page_number": 3,
+    "difficulty": "standard",
+    "rationale": "time-window constraint"
+  },
+  {
+    "id": "hard-013",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Final-sale items are not eligible for return.",
+    "expected_type": "business_rule",
+    "page_number": 3,
+    "difficulty": "standard",
+    "rationale": "eligibility constraint"
+  },
+  {
+    "id": "hard-014",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Opened electronics are subject to a 15% restocking fee.",
+    "expected_type": "business_rule",
+    "page_number": 3,
+    "difficulty": "standard",
+    "rationale": "fee constraint"
+  },
+  {
+    "id": "hard-015",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Refunds are issued to the original payment method only; store credit may not be substituted without the customer's consent.",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "invariant"
+  },
+  {
+    "id": "hard-016",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Return shipping is free for defective items and paid by the customer in all other cases.",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "invariant"
+  },
+  {
+    "id": "hard-017",
+    "source_doc": "returns",
+    "hint_block_type": "table",
+    "content": "Item category | Return window | Restocking fee\nApparel | 30 days | None\nElectronics | 30 days | 15% if opened\nFurniture | 14 days | 20%",
+    "expected_type": "business_rule",
+    "page_number": 3,
+    "difficulty": "standard",
+    "rationale": "table of constraints"
+  },
+  {
+    "id": "hard-018",
+    "source_doc": "returns",
+    "hint_block_type": "table",
+    "content": "Role | Permission\nCustomer | Initiate return\nWarehouse operator | Confirm receipt\nFinance | Approve refunds over $500",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "ambiguous",
+    "rationale": "permission matrix; could be read as testable behaviour"
+  },
+  {
+    "id": "hard-019",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "For example, a customer who received a $200 opened laptop on 1 March and returns it on 20 March is refunded $170, because the 15% restocking fee ($30) applies.",
+    "expected_type": "example",
+    "page_number": 5,
+    "difficulty": "standard",
+    "rationale": "worked example with numbers"
+  },
+  {
+    "id": "hard-020",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Example: an order delivered on 1 May can be returned until 31 May; a return initiated on 1 June is rejected.",
+    "expected_type": "example",
+    "page_number": 5,
+    "difficulty": "standard",
+    "rationale": "'Example:' prefix"
+  },
+  {
+    "id": "hard-021",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Scenario: a customer returns two of three items from one order. Only the two returned items are refunded; the original shipping charge is not refunded.",
+    "expected_type": "example",
+    "page_number": 6,
+    "difficulty": "ambiguous",
+    "rationale": "'Scenario' framing of an illustrative case"
+  },
+  {
+    "id": "hard-022",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Revision history: v3.0 (2025-04-02) added restocking fee; v3.1 (2025-06-12) clarified final-sale items.",
+    "expected_type": "out_of_scope",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "document control"
+  },
+  {
+    "id": "hard-023",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Reviewers: Dana Whitfield (Finance), Luis Ortega (Support), Mei Chen (Legal).",
+    "expected_type": "out_of_scope",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "stakeholder list"
+  },
+  {
+    "id": "hard-024",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "This document is confidential and intended solely for internal use by Acme Corp employees.",
+    "expected_type": "out_of_scope",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "boilerplate"
+  },
+  {
+    "id": "hard-025",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "Out of scope for this release: international returns and customs documentation.",
+    "expected_type": "out_of_scope",
+    "page_number": 2,
+    "difficulty": "ambiguous",
+    "rationale": "explicit scope exclusion; mentions rules but is not testable"
+  },
+  {
+    "id": "hard-026",
+    "source_doc": "returns",
+    "hint_block_type": "paragraph",
+    "content": "See Appendix B for the full list of carrier return labels.",
+    "expected_type": "out_of_scope",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "cross-reference, no content"
+  },
+  {
+    "id": "hard-027",
+    "source_doc": "returns",
+    "hint_block_type": "table",
+    "content": "1. Introduction | 2\n2. Definitions | 3\n3. Return initiation | 4\n4. Refunds | 6",
+    "expected_type": "out_of_scope",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "table of contents"
+  },
+  {
+    "id": "hard-028",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Customers see an inline error message when they enter an expired or unrecognised discount code.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "testable behaviour without 'shall'"
+  },
+  {
+    "id": "hard-029",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Given a cart subtotal of $5.00, when the customer submits a discount code, then the system displays an error and leaves the total unchanged.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "Given/When/Then"
+  },
+  {
+    "id": "hard-030",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The checkout summary page shall render within 2 seconds at the 95th percentile under the documented load profile.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5,
+    "difficulty": "ambiguous",
+    "rationale": "non-functional but measurable"
+  },
+  {
+    "id": "hard-031",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall not store the full card number after payment authorization completes.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "negative shall"
+  },
+  {
+    "id": "hard-032",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall recalculate the order total whenever the quantity of a line item changes.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 5,
+    "difficulty": "standard",
+    "rationale": "classic shall"
+  },
+  {
+    "id": "hard-033",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Discount codes shall not be combined with any other promotion on the same order.",
+    "expected_type": "business_rule",
+    "page_number": 4,
+    "difficulty": "ambiguous",
+    "rationale": "uses 'shall' but states an invariant"
+  },
+  {
+    "id": "hard-034",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Gift cards are not subject to sales tax.",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "tax constraint"
+  },
+  {
+    "id": "hard-035",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Note: shipping charges are excluded from the amount that a discount code reduces.",
+    "expected_type": "business_rule",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "'Note:' prefix on a constraint"
+  },
+  {
+    "id": "hard-036",
+    "source_doc": "checkout",
+    "hint_block_type": "table",
+    "content": "Subtotal range | Shipping charge\n$0.00–$49.99 | $5.99\n$50.00 and above | Free",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "table of constraints"
+  },
+  {
+    "id": "hard-037",
+    "source_doc": "checkout",
+    "hint_block_type": "list_item",
+    "content": "Each customer may hold at most one active promotional code at a time.",
+    "expected_type": "business_rule",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "list-item constraint"
+  },
+  {
+    "id": "hard-038",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "A $50.00 cart with a valid 20% code totals $40.00; the same cart with a 10% code totals $45.00.",
+    "expected_type": "example",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "example with no marker phrase"
+  },
+  {
+    "id": "hard-039",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Entering the code SAVE99 on the cart page displays the message \"SAVE99 is not a valid discount code.\"",
+    "expected_type": "example",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "concrete case without 'for example'"
+  },
+  {
+    "id": "hard-040",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Suppose a customer has two Widgets at $30.00 each and one Sticker at $5.00. The subtotal is $65.00 before any discount.",
+    "expected_type": "example",
+    "page_number": 5,
+    "difficulty": "standard",
+    "rationale": "'Suppose' framing"
+  },
+  {
+    "id": "hard-041",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "A SKU (stock keeping unit) is the unique identifier a merchant assigns to each purchasable product variant.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "standard",
+    "rationale": "definition without a colon"
+  },
+  {
+    "id": "hard-042",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Subtotal — the sum of line-item prices before discounts, tax and shipping.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "standard",
+    "rationale": "dash-style definition"
+  },
+  {
+    "id": "hard-043",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "The system shall be built and maintained in accordance with the company's secure coding standards.",
+    "expected_type": "out_of_scope",
+    "page_number": 3,
+    "difficulty": "ambiguous",
+    "rationale": "uses 'shall' but nothing testable at the feature level"
+  },
+  {
+    "id": "hard-044",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Future releases may add support for gift cards and loyalty points; these are not covered by this specification.",
+    "expected_type": "out_of_scope",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "roadmap"
+  },
+  {
+    "id": "hard-045",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Approved by: Commerce Platform steering committee on 2025-03-05.",
+    "expected_type": "out_of_scope",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "document control"
+  },
+  {
+    "id": "hard-046",
+    "source_doc": "checkout",
+    "hint_block_type": "figure_caption",
+    "content": "Figure 3: Sequence diagram of the checkout flow between the web client and the order service.",
+    "expected_type": "out_of_scope",
+    "page_number": 3,
+    "difficulty": "ambiguous",
+    "rationale": "figure caption; could be read as metadata"
+  },
+  {
+    "id": "hard-047",
+    "source_doc": "checkout",
+    "hint_block_type": "heading",
+    "content": "Checkout Service — Requirements Specification, Version 1.1 (2025-03-05)",
+    "expected_type": "metadata",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "title with version and date"
+  },
+  {
+    "id": "hard-048",
+    "source_doc": "checkout",
+    "hint_block_type": "paragraph",
+    "content": "Page 5 of 8 — Checkout Service Requirements — Internal",
+    "expected_type": "out_of_scope",
+    "page_number": 5,
+    "difficulty": "standard",
+    "rationale": "page footer"
+  },
+  {
+    "id": "hard-049",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall sign users out automatically and redirect them to the login page when their session expires.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "classic shall"
+  },
+  {
+    "id": "hard-050",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall reject passwords shorter than 12 characters and display the reason.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "classic shall"
+  },
+  {
+    "id": "hard-051",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Passwords must be at least 12 characters long and may not contain the user's email address.",
+    "expected_type": "business_rule",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "constraint stated without 'shall'"
+  },
+  {
+    "id": "hard-052",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Given a locked account, when the lockout period elapses, then the user can log in again with valid credentials.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "Given/When/Then"
+  },
+  {
+    "id": "hard-053",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "The system shall not reveal whether an email address is registered when a login attempt fails.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 4,
+    "difficulty": "standard",
+    "rationale": "negative shall"
+  },
+  {
+    "id": "hard-054",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Administrator accounts are exempt from the idle timeout while a privileged operation is in progress.",
+    "expected_type": "business_rule",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "exemption rule"
+  },
+  {
+    "id": "hard-055",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Each user may have at most 5 concurrent active sessions.",
+    "expected_type": "business_rule",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "limit"
+  },
+  {
+    "id": "hard-056",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "A user who has been idle since 10:00 and returns at 10:45 is redirected to the login page and must sign in again.",
+    "expected_type": "example",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "example with no marker phrase"
+  },
+  {
+    "id": "hard-057",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Entering a wrong password on the login page shows \"Invalid email or password\" and does not indicate which field was wrong.",
+    "expected_type": "example",
+    "page_number": 4,
+    "difficulty": "ambiguous",
+    "rationale": "concrete case; could be read as acceptance criterion"
+  },
+  {
+    "id": "hard-058",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Authenticator app: A mobile application that generates time-based one-time passcodes (TOTP) used as a second authentication factor.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "standard",
+    "rationale": "definition with a colon"
+  },
+  {
+    "id": "hard-059",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Lockout window refers to the 15-minute period during which failed login attempts are counted.",
+    "expected_type": "glossary_term",
+    "page_number": 2,
+    "difficulty": "ambiguous",
+    "rationale": "definition phrased with 'refers to'; also carries a number"
+  },
+  {
+    "id": "hard-060",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Single sign-on with external identity providers is out of scope for this release.",
+    "expected_type": "out_of_scope",
+    "page_number": 3,
+    "difficulty": "ambiguous",
+    "rationale": "explicit scope exclusion"
+  },
+  {
+    "id": "hard-061",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Reviewed by: Sam Torres (QA Lead) on 2025-02-17.",
+    "expected_type": "out_of_scope",
+    "page_number": 8,
+    "difficulty": "standard",
+    "rationale": "document control"
+  },
+  {
+    "id": "hard-062",
+    "source_doc": "auth",
+    "hint_block_type": "table",
+    "content": "Role | MFA required\nAdministrator | Yes\nStandard user | Optional\nService account | No",
+    "expected_type": "business_rule",
+    "page_number": 5,
+    "difficulty": "ambiguous",
+    "rationale": "constraint matrix; could be read as acceptance criterion"
+  },
+  {
+    "id": "hard-063",
+    "source_doc": "auth",
+    "hint_block_type": "heading",
+    "content": "User Account & Authentication — Version 2.0 — 18 February 2025",
+    "expected_type": "metadata",
+    "page_number": 1,
+    "difficulty": "standard",
+    "rationale": "title with version and date"
+  },
+  {
+    "id": "hard-064",
+    "source_doc": "auth",
+    "hint_block_type": "list_item",
+    "content": "Users can sign out of all other devices from the account settings page.",
+    "expected_type": "acceptance_criterion",
+    "page_number": 7,
+    "difficulty": "standard",
+    "rationale": "testable behaviour without 'shall'"
+  },
+  {
+    "id": "hard-065",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Password reset links may only be requested once every 60 seconds per email address.",
+    "expected_type": "business_rule",
+    "page_number": 6,
+    "difficulty": "standard",
+    "rationale": "rate-limit constraint"
+  },
+  {
+    "id": "hard-066",
+    "source_doc": "auth",
+    "hint_block_type": "paragraph",
+    "content": "Copyright 2025 Acme Corp. All rights reserved. Do not distribute.",
+    "expected_type": "out_of_scope",
+    "page_number": 8,
+    "difficulty": "standard",
+    "rationale": "boilerplate"
+  }
+]
