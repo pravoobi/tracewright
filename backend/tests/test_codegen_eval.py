@@ -44,3 +44,13 @@ def test_collect_results_marks_failed_and_missing_specs(tmp_path):
     assert res["tc-002.spec.ts"]["passed"] is False and "toBe" in res["tc-002.spec.ts"]["error"]
     assert "tc-003.spec.ts" not in res  # a spec that never ran has no entry
     assert _collect_results(tmp_path / "missing.json") == {}
+
+
+def test_compare_to_baseline_forgives_one_flaky_card_but_not_two():
+    base = {"generated_rate": 1.0, "pass_rate": 1.0, "pass_rate_of_attempted": 1.0,
+            "ac_coverage_pass": 1.0, "traceability_rate": 1.0}
+    one_down = dict(base, cards_attempted=5, pass_rate=0.8, pass_rate_of_attempted=0.8)
+    assert compare_to_baseline(one_down, base) != []  # strict by default
+    assert compare_to_baseline(one_down, base, allow_card_drops=1) == []
+    two_down = dict(one_down, pass_rate=0.6, pass_rate_of_attempted=0.6)
+    assert len(compare_to_baseline(two_down, base, allow_card_drops=1)) == 2

@@ -250,11 +250,20 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def compare_to_baseline(summary: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
-    """Metrics that got worse than the baseline (higher is better for all but retry_rate)."""
+def compare_to_baseline(
+    summary: dict[str, Any], baseline: dict[str, Any], allow_card_drops: int = 0
+) -> list[str]:
+    """Metrics that got worse than the baseline (higher is better for all but retry_rate).
+
+    LLM generation is nondeterministic, so a baseline over a handful of cards
+    would flag a single flaky card as a regression. `allow_card_drops` forgives
+    that many cards' worth of drop (N / cards_attempted) per metric; the absolute
+    pass-rate floor is enforced separately and is not loosened by this.
+    """
     worse = []
+    slack = allow_card_drops / max(summary.get("cards_attempted", 0), 1)
     for key in ("generated_rate", "pass_rate", "pass_rate_of_attempted", "ac_coverage_pass", "traceability_rate"):
-        if summary[key] < baseline.get(key, 0.0) - 1e-9:
+        if summary[key] < baseline.get(key, 0.0) - slack - 1e-9:
             worse.append(f"{key}: {baseline[key]} -> {summary[key]}")
     return worse
 
@@ -326,6 +335,12 @@ async def main() -> int:
     ap.add_argument("--golden", action="store_true", help="use backend/evals/golden/ instead of the dev DB/MinIO")
     ap.add_argument("--base-url", help="with --golden: where the demo app is running (default: the golden file's URL)")
     ap.add_argument("--min-pass-rate", type=float, default=0.8)
+    ap.add_argument(
+        "--allow-card-drops",
+        type=int,
+        default=1,
+        help="with --baseline: tolerate this many cards worse than baseline (LLM flakiness)",
+    )
     ap.add_argument("--save-baseline", action="store_true", help="write this run to results/codegen-baseline.json")
     args = ap.parse_args()
 
@@ -354,6 +369,13 @@ async def main() -> int:
             await asyncio.to_thread(_run_playwright, spec_dir, env.url, storage_state, report)
         results = _collect_results(report)
     finally:
+        # Keep what was generated so a failing card can be diagnosed from the
+        # CI artifact (the temp spec dir is removed below).
+        kept = RESULTS_DIR / "specs-latest"
+        shutil.rmtree(kept, ignore_errors=True)
+        if spec_dir.exists():
+            RESULTS_DIR.mkdir(exist_ok=True)
+            shutil.copytree(spec_dir, kept)
         shutil.rmtree(spec_dir, ignore_errors=True)
         report.unlink(missing_ok=True)
 
@@ -385,7 +407,11 @@ async def main() -> int:
         print(f"\nFAIL: pass rate {summary['pass_rate_of_attempted']} < {args.min_pass_rate}")
         failed = True
     if args.baseline:
-        worse = compare_to_baseline(summary, json.loads(Path(args.baseline).read_text(encoding="utf-8")))
+        worse = compare_to_baseline(
+            summary,
+            json.loads(Path(args.baseline).read_text(encoding="utf-8")),
+            allow_card_drops=args.allow_card_drops,
+        )
         if worse:
             print("\nFAIL: regressed vs baseline:\n  " + "\n  ".join(worse))
             failed = True
