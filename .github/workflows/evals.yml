@@ -61,13 +61,16 @@ jobs:
 
       - name: Check for LLM key
         id: key
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); classification eval skipped"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
+            # A pasted secret often carries a trailing newline, which the HTTP
+            # client rejects as a header-injection attempt: export a trimmed copy.
+            KEY=$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:][:cntrl:]')
+            echo "::add-mask::$KEY"
+            echo "ANTHROPIC_API_KEY=$KEY" >> "$GITHUB_ENV"
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -91,8 +94,6 @@ jobs:
 
       - name: Classification eval
         if: steps.key.outputs.present == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: uv run --frozen python -m backend.evals.run_evals --classification-only
 
   codegen:
@@ -114,13 +115,16 @@ jobs:
 
       - name: Check for LLM key
         id: key
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); codegen eval skipped"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
+            # A pasted secret often carries a trailing newline, which the HTTP
+            # client rejects as a header-injection attempt: export a trimmed copy.
+            KEY=$(printf '%s' "$ANTHROPIC_API_KEY" | tr -d '[:space:][:cntrl:]')
+            echo "::add-mask::$KEY"
+            echo "ANTHROPIC_API_KEY=$KEY" >> "$GITHUB_ENV"
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -177,8 +181,6 @@ jobs:
 
       - name: Codegen eval
         if: steps.key.outputs.present == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           # The golden registry's page URLs are http://localhost:4000, so the
           # login cookie and the specs must use that same host.
