@@ -57,7 +57,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm run lint
+
       # `pnpm run build` is `tsc && vite build`: typecheck, then bundle.
-      # (`pnpm run lint` is not run: the frontend has no ESLint config yet.)
       - name: Typecheck and build
         run: pnpm run build
