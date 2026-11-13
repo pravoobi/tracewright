@@ -124,11 +124,30 @@ def _parse_plan(raw: str, doc_version: str, source_text: str = "") -> dict[str, 
         card.setdefault("introduced_in_version", doc_version)
         if not card.get("test_id"):
             card["test_id"] = f"TC-{uuid.uuid4().hex[:8].upper()}"
+        _split_joined_source_ids(card)
         _mark_manifest_provenance(card, source_text)
 
     plan.setdefault("coverage_gaps", [])
     plan.setdefault("clarification_flags", [])
     return plan
+
+
+_LOGICAL_ID = re.compile(r"REQ-[0-9A-Za-z]+")
+
+
+def _split_joined_source_ids(card: dict[str, Any]) -> None:
+    """The model sometimes writes several ids into source_logical_id ("REQ-a / REQ-b")
+    when a card spans conflicting or related chunks. Stored as is, that traceability
+    link would point at an id that does not exist, so keep the first as the primary
+    source and move the rest to related_logical_ids."""
+    raw = card.get("source_logical_id")
+    related = [r for r in (card.get("related_logical_ids") or []) if isinstance(r, str)]
+    if isinstance(raw, str):
+        ids = _LOGICAL_ID.findall(raw)
+        if len(ids) > 1:
+            card["source_logical_id"] = ids[0]
+            related = [i for i in ids[1:] if i not in related] + related
+    card["related_logical_ids"] = [r for r in related if r != card.get("source_logical_id")]
 
 
 async def persist_plan(
@@ -202,6 +221,14 @@ async def persist_plan(
                 linked_type="chunk",
                 linked_logical_id=card["source_logical_id"],
                 link_reason="AC coverage",
+            ))
+        for related_id in card.get("related_logical_ids") or []:
+            session.add(TraceabilityLink(
+                tenant_id=uuid.UUID(tenant_id),
+                test_card_id=tc.id,
+                linked_type="chunk",
+                linked_logical_id=related_id,
+                link_reason="related requirement",
             ))
         for bug_id in card.get("regresses_bugs", []):
             session.add(TraceabilityLink(

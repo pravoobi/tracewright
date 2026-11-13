@@ -89,3 +89,14 @@ def test_golden_cases_build_with_real_data():
     chunk_ids = {c["id"] for c in cases["checkout"]["chunks"]}
     assert all(set(v) & chunk_ids for v in cases["checkout"]["expected_bug_links"].values())
     assert len({c["logical_id"] for c in cases["planted"]["chunks"]}) == 5
+
+
+def test_joined_source_ids_are_split_into_primary_and_related():
+    from backend.src.agents.planner import _parse_plan
+
+    raw = '{"test_cards": [{"title": "t", "source_logical_id": "REQ-aaa111 / REQ-bbb222", "setup_manifest": []}]}'
+    card = _parse_plan(raw, "1.0")["test_cards"][0]
+    assert card["source_logical_id"] == "REQ-aaa111"
+    assert card["related_logical_ids"] == ["REQ-bbb222"]
+    ok = _parse_plan('{"test_cards": [{"title": "t", "source_logical_id": "REQ-aaa111"}]}', "1.0")["test_cards"][0]
+    assert ok["source_logical_id"] == "REQ-aaa111" and ok["related_logical_ids"] == []

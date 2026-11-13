@@ -66,6 +66,11 @@ def score_case(plan: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
             invalid_links += 1
         else:
             sources.setdefault(cid, []).append(c)
+        for rid in c.get("related_logical_ids") or []:
+            if rid not in by_lid:
+                invalid_links += 1
+            else:
+                sources.setdefault(by_lid[rid], []).append(c)
 
     def flagged(cid: str) -> bool:
         ch = chunks[cid]

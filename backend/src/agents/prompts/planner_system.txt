@@ -26,7 +26,10 @@ Each test card must have:
 - test_type: "functional" | "negative" | "boundary" | "regression" | "smoke"
 - priority: "P0" | "P1" | "P2" | "P3"
 - source_ac: the acceptance criterion text this test covers (exact quote from the document)
-- source_logical_id: the logical_id of the chunk this test maps to
+- source_logical_id: exactly ONE logical_id (copied verbatim) — the primary chunk this test maps to.
+  Never join several ids in this field. If the test also depends on other chunks (e.g. two
+  requirements that conflict), list their logical_ids in related_logical_ids (array).
+- related_logical_ids: array of additional logical_ids this test relates to (may be empty)
 - regresses_bugs: array of bug external_ids this test would catch if regressed
 - tier_sources: {"tier": 1, "confidence": 0.0-1.0}
 - needs_clarification: true if the requirement is ambiguous
