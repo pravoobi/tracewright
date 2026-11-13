@@ -29,7 +29,7 @@ jobs:
           enable-cache: true
 
       - name: Install backend
-        run: uv sync --frozen --all-packages
+        run: uv sync --frozen --all-packages --all-extras
 
       - name: Unit tests
         # Deliberately no DATABASE_URL / ANTHROPIC_API_KEY: the suite must not
