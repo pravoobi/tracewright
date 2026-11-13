@@ -45,21 +45,18 @@ def _chunk(label_id: str, content: str, ref: str) -> dict[str, Any]:
 
 
 def _bugs() -> list[dict[str, Any]]:
-    import openpyxl
-
-    ws = openpyxl.load_workbook(GOLDEN / "checkout-bugs-export.xlsx").active
-    rows = list(ws.iter_rows(values_only=True))
-    head = [h for h in rows[0]]
-    out = []
-    for r in rows[1:]:
-        d = dict(zip(head, r))
-        if d.get("Priority") in RETRIEVAL_SEVERITIES and d.get("Summary"):
-            out.append({
-                "external_id": d["Bug ID"], "title": d["Summary"], "severity": d["Priority"],
-                "component": d["Module"], "root_cause": d["Root Cause"], "fix_version": d["Resolved In"],
-                "description": d["Details"],
-            })
-    return out
+    """checkout-bugs.json is the committed copy of the fields of the golden Excel
+    export (checkout-bugs-export.xlsx, generated and git-ignored) that planning uses."""
+    rows = json.loads((GOLDEN / "checkout-bugs.json").read_text(encoding="utf-8"))
+    return [
+        {
+            "external_id": d["Bug ID"], "title": d["Summary"], "severity": d["Priority"],
+            "component": d["Module"], "root_cause": d["Root Cause"], "fix_version": d["Resolved In"],
+            "description": d["Details"],
+        }
+        for d in rows
+        if d.get("Priority") in RETRIEVAL_SEVERITIES and d.get("Summary")
+    ]
 
 
 def build_cases() -> list[dict[str, Any]]:

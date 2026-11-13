@@ -1,0 +1,52 @@
+[
+  {
+    "Bug ID": "BUG-1001",
+    "Summary": "Discount code SAVE20 not reducing total on checkout page",
+    "Details": "Applying SAVE20 shows correct cart total but checkout page still shows full price",
+    "Priority": "P1",
+    "Module": "Checkout",
+    "State": "Closed",
+    "Root Cause": "Checkout page cached stale cart total before discount recalculation",
+    "Resolved In": "1.1"
+  },
+  {
+    "Bug ID": "BUG-1002",
+    "Summary": "Discount code accepted below $10 minimum order threshold",
+    "Details": "Business rule requires order >= $10 for discount eligibility, but codes were accepted on a $5 order",
+    "Priority": "P0",
+    "Module": "Checkout",
+    "State": "Closed",
+    "Root Cause": "Missing server-side validation, only client-side check existed",
+    "Resolved In": "1.0"
+  },
+  {
+    "Bug ID": "BUG-1003",
+    "Summary": "Cart allows 25 distinct line items despite documented max of 20",
+    "Details": null,
+    "Priority": "Sev2",
+    "Module": "Cart",
+    "State": "Open",
+    "Root Cause": null,
+    "Resolved In": null
+  },
+  {
+    "Bug ID": "BUG-1004",
+    "Summary": null,
+    "Details": "Placeholder row for QA tracking",
+    "Priority": "P3",
+    "Module": "Misc",
+    "State": "Open",
+    "Root Cause": null,
+    "Resolved In": null
+  },
+  {
+    "Bug ID": "BUG-1005",
+    "Summary": "International shipping rate not applied for non-US addresses",
+    "Details": "Orders shipped outside the US were charged standard domestic shipping instead of international rate",
+    "Priority": "P1",
+    "Module": "Shipping",
+    "State": "Closed",
+    "Root Cause": "Shipping rate lookup defaulted to domestic when country code was missing",
+    "Resolved In": "1.1"
+  }
+]
