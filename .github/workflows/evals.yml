@@ -61,6 +61,8 @@ jobs:
 
       - name: Check for LLM key
         id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); classification eval skipped"
@@ -115,6 +117,8 @@ jobs:
 
       - name: Check for LLM key
         id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::notice::ANTHROPIC_API_KEY is not available (fork PR or secret unset); codegen eval skipped"
