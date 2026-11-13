@@ -1,7 +1,25 @@
 const path = require("path");
 const express = require("express");
 const session = require("express-session");
-const { USERS, PRODUCTS, DISCOUNT_CODES, MIN_ORDER_FOR_DISCOUNT_CENTS, defaultCart } = require("./data");
+const {
+  freshUsers,
+  PRODUCTS,
+  DISCOUNT_CODES,
+  MIN_ORDER_FOR_DISCOUNT_CENTS,
+  MAX_QTY_PER_SKU,
+  MAX_FAILED_LOGINS,
+  LOCKOUT_WINDOW_MS,
+  LOCKOUT_MS,
+  IDLE_TIMEOUT_MS,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_HISTORY,
+  defaultCart,
+} = require("./data");
+
+// Mutable (password changes) -- restored by POST /test/reset-auth.
+let users = freshUsers();
+// email -> { times: number[], lockedUntil: number }
+const failedLogins = new Map();
 
 // This app is the eval harness's seeded test target ONLY (CLAUDE.md's
 // "demo-app: a small seeded web app for the eval harness") -- it has a
@@ -40,6 +58,28 @@ app.use(
     cookie: { maxAge: 1000 * 60 * 60 },
   })
 );
+
+// Idle-session expiry: a session untouched for IDLE_TIMEOUT_MS is ended and
+// the user is sent to the login page with an explanation.
+app.use((req, res, next) => {
+  if (req.session.user && !req.path.startsWith("/test/")) {
+    const now = Date.now();
+    if (req.session.lastActivity && now - req.session.lastActivity > IDLE_TIMEOUT_MS) {
+      return req.session.regenerate(() => {
+        setFlash(req, "error", "Your session has expired due to inactivity. Please log in again.");
+        res.redirect("/login");
+      });
+    }
+    req.session.lastActivity = now;
+  }
+  next();
+});
+
+// Lets templates show the "Order history" link only once an order exists.
+app.use((req, res, next) => {
+  res.locals.hasOrders = !!(req.session.orders && req.session.orders.length);
+  next();
+});
 
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.redirect("/login");
@@ -82,15 +122,46 @@ app.get("/login", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-  const { email, password } = req.body;
-  const user = USERS.find((u) => u.email === email && u.password === password);
-  if (!user) {
-    setFlash(req, "error", "Invalid email or password.");
+  const { password } = req.body;
+  const email = (req.body.email || "").trim().toLowerCase();
+  const now = Date.now();
+
+  // Lockout is tracked per email whether or not the account exists, so the
+  // responses never reveal which addresses are registered.
+  const rec = failedLogins.get(email) || { times: [], lockedUntil: 0 };
+  if (rec.lockedUntil > now) {
+    setFlash(
+      req,
+      "error",
+      `Account locked after ${MAX_FAILED_LOGINS} failed login attempts. Try again in 30 minutes.`
+    );
     return res.redirect("/login");
   }
+
+  const user = users.find((u) => u.email === email && u.password === password);
+  if (!user) {
+    rec.times = rec.times.filter((t) => now - t < LOCKOUT_WINDOW_MS);
+    rec.times.push(now);
+    failedLogins.set(email, rec);
+    if (rec.times.length >= MAX_FAILED_LOGINS) {
+      rec.lockedUntil = now + LOCKOUT_MS;
+      setFlash(
+        req,
+        "error",
+        `Account locked after ${MAX_FAILED_LOGINS} failed login attempts. Try again in 30 minutes.`
+      );
+    } else {
+      setFlash(req, "error", "Invalid email or password.");
+    }
+    return res.redirect("/login");
+  }
+
+  failedLogins.delete(email); // a successful login resets the counter
   req.session.user = { email: user.email };
   req.session.cart = defaultCart();
   req.session.discount = null;
+  req.session.orders = [];
+  req.session.lastActivity = now;
   res.redirect("/cart");
 });
 
@@ -109,8 +180,58 @@ app.post("/reset", (req, res) => {
     req.session.cart = defaultCart();
     req.session.discount = null;
     req.session.flash = null;
+    req.session.orders = [];
   }
   res.status(204).end();
+});
+
+// Test-only hooks (same status as /reset: a fixture, never a real app).
+// Restores accounts/passwords and clears lockout counters.
+app.post("/test/reset-auth", (req, res) => {
+  users = freshUsers();
+  failedLogins.clear();
+  res.status(204).end();
+});
+
+// Makes the caller's session look idle for longer than the idle timeout,
+// so the expiry behaviour can be tested without waiting 30 minutes.
+app.post("/test/expire-session", (req, res) => {
+  if (!req.session.user) return res.status(401).end();
+  req.session.lastActivity = Date.now() - IDLE_TIMEOUT_MS - 60 * 1000;
+  res.status(204).end();
+});
+
+app.get("/orders", requireAuth, (req, res) => {
+  res.render("orders", { orders: req.session.orders || [] });
+});
+
+app.get("/account/password", requireAuth, (req, res) => {
+  res.render("password", { message: popFlash(req) });
+});
+
+app.post("/account/password", requireAuth, (req, res) => {
+  const user = users.find((u) => u.email === req.session.user.email);
+  const { current, next, confirm } = req.body;
+  const fail = (text) => {
+    setFlash(req, "error", text);
+    return res.redirect("/account/password");
+  };
+  if (!user || current !== user.password) return fail("Current password is incorrect.");
+  if (!next || next.length < PASSWORD_MIN_LENGTH) {
+    return fail(`New password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+  }
+  if (next.toLowerCase().includes(user.email)) {
+    return fail("New password must not contain your email address.");
+  }
+  if (next !== confirm) return fail("New password and confirmation do not match.");
+  const previous = [user.password, ...user.history].slice(0, PASSWORD_HISTORY);
+  if (previous.includes(next)) {
+    return fail(`New password must differ from your previous ${PASSWORD_HISTORY} passwords.`);
+  }
+  user.history = previous;
+  user.password = next;
+  setFlash(req, "success", "Password changed.");
+  res.redirect("/account/password");
 });
 
 app.get("/cart", requireAuth, (req, res) => {
@@ -133,6 +254,11 @@ app.post("/cart/update", requireAuth, (req, res) => {
   for (const p of PRODUCTS) {
     const raw = req.body[`qty-${p.id}`];
     const qty = Math.max(0, parseInt(raw, 10) || 0);
+    if (qty > MAX_QTY_PER_SKU) {
+      // The cart is left unchanged: a rejected update must not half-apply.
+      setFlash(req, "error", `Quantity for ${p.name} cannot exceed ${MAX_QTY_PER_SKU}.`);
+      return res.redirect("/cart");
+    }
     cart[p.id] = qty;
   }
   req.session.cart = cart;
@@ -205,6 +331,11 @@ app.post("/checkout/place-order", requireAuth, (req, res) => {
   const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
   req.session.cart = defaultCart();
   req.session.discount = null;
+  req.session.orders = [
+    ...(req.session.orders || []),
+    { orderId, placedAt: new Date().toISOString().slice(0, 16).replace("T", " "), totalDisplay: centsToDollars(total) },
+  ];
+  res.locals.hasOrders = true;
 
   res.render("confirmation", { orderId, totalDisplay: centsToDollars(total) });
 });

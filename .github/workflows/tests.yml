@@ -63,3 +63,28 @@ jobs:
       # `pnpm run build` is `tsc && vite build`: typecheck, then bundle.
       - name: Typecheck and build
         run: pnpm run build
+
+  demo-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: demo-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: demo-app/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # The eval target must itself behave as the golden requirements say.
+      - name: Behavioural tests
+        run: pnpm test

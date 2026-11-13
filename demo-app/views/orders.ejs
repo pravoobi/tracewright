@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Demo Shop — Order History</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="page">
+    <%- include('partials/nav') %>
+
+    <h1>Order History</h1>
+
+    <% if (!orders.length) { %>
+      <p>You have not placed any orders yet.</p>
+    <% } else { %>
+      <table data-testid="order-history">
+        <thead>
+          <tr><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Total</th></tr>
+        </thead>
+        <tbody>
+          <% orders.forEach(function(o) { %>
+            <tr>
+              <td><%= o.orderId %></td>
+              <td><%= o.placedAt %></td>
+              <td>$<%= o.totalDisplay %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>
