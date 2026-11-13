@@ -149,6 +149,14 @@ Rules:
   option with a pre-captured logged-in session; importing from `@playwright/test`
   instead runs the test unauthenticated and every request redirects to the login
   page, causing every subsequent locator wait to time out.
+- If the card needs its OWN session — it logs in through the login page, tests lockout, session
+  expiry, logout, or changes an account's password, or otherwise must not share the pre-captured
+  session — import `test` and `expect` from `../fixtures/isolated-session.fixture` instead. Its
+  context starts logged out, accounts are restored before each test, and it provides an
+  `expireSession()` helper (destructure it from the test arguments, e.g.
+  `async ({ page, expireSession }) => {...}`) that ages the session past the idle timeout. Log in
+  with the account credentials named in the setup manifest via the LoginPage members. Never use
+  this fixture together with the authenticated one.
 - Setup-manifest entries marked `"source": "assumed"` are UNVERIFIED: the Planner chose their
   values, they are not in the customer's requirements and may not exist in the target app.
   Never present such values as established facts; keep them in one clearly named constant
@@ -166,6 +174,15 @@ Rules:
 - Include a clear // Verify: comment before every assertion explaining what business outcome it checks.
 
 Respond with the raw TypeScript file content only — no markdown fences."""
+
+
+def strip_code_fences(code: str) -> str:
+    """The model sometimes wraps the file in a markdown fence (especially on the
+    corrective retry) despite the instruction; a fence is a syntax error that
+    stops Playwright loading the whole suite, so remove it."""
+    text = code.strip()
+    m = re.match(r"^```[A-Za-z]*[ \t]*\r?\n(.*?)\r?\n?```[ \t]*$", text, re.DOTALL)
+    return m.group(1) if m else code
 
 
 async def generate_test_file(
@@ -195,6 +212,7 @@ async def generate_test_file(
             system=_CODEGEN_SYSTEM,
             max_tokens=4096,
         )
+        code = strip_code_fences(code)
         bad = unresolved_imports(code, page_objects, fixtures) + unresolved_page_object_members(
             code, registry
         )

@@ -1,11 +1,11 @@
 {
-  "cards_attempted": 5,
-  "cards_generated": 5,
+  "cards_attempted": 16,
+  "cards_generated": 16,
   "generated_rate": 1.0,
-  "specs_passed": 5,
+  "specs_passed": 16,
   "pass_rate": 1.0,
   "pass_rate_of_attempted": 1.0,
   "ac_coverage_pass": 1.0,
   "traceability_rate": 1.0,
-  "retry_rate": 0.0
+  "retry_rate": 0.188
 }

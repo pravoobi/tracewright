@@ -64,4 +64,8 @@ export class CartPage extends BasePage {
   get cartErrorAlert() {
     return this.page.getByRole("alert");
   }
+
+  get changePasswordLink() {
+    return this.page.getByRole("link", { name: "Change password" });
+  }
 }

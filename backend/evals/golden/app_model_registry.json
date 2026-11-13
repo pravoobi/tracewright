@@ -14,7 +14,8 @@
       "proceedToCheckoutButton": "page.getByRole(\"button\", { name: \"Proceed to checkout\" })",
       "discountSummary": "page.getByTestId(\"discount-summary\")",
       "discountStatusMessage": "page.getByRole(\"status\")",
-      "cartErrorAlert": "page.getByRole(\"alert\")"
+      "cartErrorAlert": "page.getByRole(\"alert\")",
+      "changePasswordLink": "page.getByRole(\"link\", { name: \"Change password\" })"
     },
     "locator_strategies": {
       "logoutButton": "role",
@@ -29,7 +30,8 @@
       "proceedToCheckoutButton": "role",
       "discountSummary": "testid",
       "discountStatusMessage": "role",
-      "cartErrorAlert": "role"
+      "cartErrorAlert": "role",
+      "changePasswordLink": "role"
     },
     "warnings": [],
     "suggestions": {},
@@ -133,6 +135,144 @@
         {
           "action": "goto",
           "url": "http://localhost:4000/checkout"
+        }
+      ]
+    }
+  },
+  "LoginPage": {
+    "url_pattern": "http://localhost:4000/login",
+    "locators": {
+      "loginHeading": "page.getByRole(\"heading\", { name: \"Log In\" })",
+      "emailInput": "page.getByRole(\"textbox\", { name: \"Email\" })",
+      "passwordInput": "page.getByTestId(\"login-password\")",
+      "loginButton": "page.getByRole(\"button\", { name: \"Log in\" })",
+      "loginErrorAlert": "page.getByRole(\"alert\")"
+    },
+    "locator_strategies": {
+      "loginHeading": "role",
+      "emailInput": "role",
+      "passwordInput": "testid",
+      "loginButton": "role",
+      "loginErrorAlert": "role"
+    },
+    "warnings": [],
+    "suggestions": {},
+    "requires_state": {
+      "loginErrorAlert": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/login"
+        },
+        {
+          "action": "fill",
+          "role": "textbox",
+          "name": "Email",
+          "testid": null,
+          "value": "nobody@example.com"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "login-password",
+          "value": "wrong-password"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Log in",
+          "testid": null
+        }
+      ]
+    }
+  },
+  "ChangePasswordPage": {
+    "url_pattern": "http://localhost:4000/account/password",
+    "locators": {
+      "changePasswordHeading": "page.getByRole(\"heading\", { name: \"Change Password\" })",
+      "currentPasswordInput": "page.getByTestId(\"current-password\")",
+      "newPasswordInput": "page.getByTestId(\"new-password\")",
+      "confirmPasswordInput": "page.getByTestId(\"confirm-password\")",
+      "changePasswordButton": "page.getByRole(\"button\", { name: \"Change password\" })",
+      "passwordStatusMessage": "page.getByRole(\"status\")",
+      "passwordErrorAlert": "page.getByRole(\"alert\")"
+    },
+    "locator_strategies": {
+      "changePasswordHeading": "role",
+      "currentPasswordInput": "testid",
+      "newPasswordInput": "testid",
+      "confirmPasswordInput": "testid",
+      "changePasswordButton": "role",
+      "passwordStatusMessage": "role",
+      "passwordErrorAlert": "role"
+    },
+    "warnings": [],
+    "suggestions": {},
+    "requires_state": {
+      "passwordStatusMessage": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/account/password"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "current-password",
+          "value": "password123"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "new-password",
+          "value": "a-long-enough-pass1"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "confirm-password",
+          "value": "a-long-enough-pass1"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Change password",
+          "testid": null
+        }
+      ],
+      "passwordErrorAlert": [
+        {
+          "action": "goto",
+          "url": "http://localhost:4000/account/password"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "current-password",
+          "value": "password123"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "new-password",
+          "value": "short"
+        },
+        {
+          "action": "fill",
+          "role": null,
+          "name": null,
+          "testid": "confirm-password",
+          "value": "short"
+        },
+        {
+          "action": "click",
+          "role": "button",
+          "name": "Change password",
+          "testid": null
         }
       ]
     }

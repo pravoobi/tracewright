@@ -54,3 +54,12 @@ def test_compare_to_baseline_forgives_one_flaky_card_but_not_two():
     assert compare_to_baseline(one_down, base, allow_card_drops=1) == []
     two_down = dict(one_down, pass_rate=0.6, pass_rate_of_attempted=0.6)
     assert len(compare_to_baseline(two_down, base, allow_card_drops=1)) == 2
+
+
+def test_strip_code_fences():
+    from backend.src.agents.generator.codegen import strip_code_fences
+
+    body = "import { x } from 'y';\nawait a();"
+    assert strip_code_fences(f"```typescript\n{body}\n```") == body
+    assert strip_code_fences(f"```\n{body}\n```\n") == body
+    assert strip_code_fences(body) == body  # unfenced text is untouched
