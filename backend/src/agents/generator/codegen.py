@@ -168,6 +168,11 @@ Rules:
   inputs and an update button), establish it at the start of the test through those page-object
   members, under a `// Setup:` comment, instead of assuming it is already there. Data no registry
   control can create stays a named constant with a `// Setup assumption:` comment.
+- Assert only on text or values that the test card or the page-object registry establishes. A locator
+  names an element, not its content: never assume what text, amount or format an element shows
+  beyond what the card states (e.g. a "discount summary" element may only label the discount, not
+  show its amount). When the card's expected amount is not tied to a specific element, check it
+  on an element whose purpose is that value (such as the order total) rather than on a label.
 - Each test file starts with metadata comments linking to the test card ID and source artifacts.
 - Use TypeScript with strict types.
 - Use async/await throughout.
@@ -236,7 +241,14 @@ def strip_code_fences(code: str) -> str:
     stops Playwright loading the whole suite, so remove it."""
     text = code.strip()
     m = re.match(r"^```[A-Za-z]*[ \t]*\r?\n(.*?)\r?\n?```[ \t]*$", text, re.DOTALL)
-    return m.group(1) if m else code
+    if m:
+        return m.group(1)
+    # A corrective reply often adds prose around the fenced file ("Here is the fixed file: ```ts ... ```
+    # ..."): take the longest fenced block, which is the file.
+    blocks = re.findall(r"```[A-Za-z]*[ \t]*\r?\n(.*?)\r?\n?```", text, re.DOTALL)
+    if blocks:
+        return max(blocks, key=len)
+    return code
 
 
 async def generate_test_file(
@@ -276,7 +288,7 @@ async def generate_test_file(
             break
         log.warning(
             "codegen.unresolved_imports", test_id=test_card.get("test_id"), imports=bad,
-            type_errors=type_errors, attempt=attempt,
+            type_errors=type_errors, attempt=attempt, code_head=code[:200], code_tail=code[-200:],
         )
         if attempt == 2:
             raise UnsafeGeneratedCodeError(

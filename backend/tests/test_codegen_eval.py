@@ -63,6 +63,8 @@ def test_strip_code_fences():
     assert strip_code_fences(f"```typescript\n{body}\n```") == body
     assert strip_code_fences(f"```\n{body}\n```\n") == body
     assert strip_code_fences(body) == body  # unfenced text is untouched
+    # prose around the fenced file (typical of a corrective reply)
+    assert strip_code_fences(f"Here is the fixed file:\n\n```ts\n{body}\n```\n\nI renamed the variable.") == body
 
 
 def test_import_menu_lists_exact_specifiers():
