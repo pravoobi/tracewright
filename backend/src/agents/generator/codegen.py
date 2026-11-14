@@ -176,6 +176,20 @@ Rules:
 Respond with the raw TypeScript file content only — no markdown fences."""
 
 
+def import_menu(page_objects: set[str], fixtures: list[str]) -> str:
+    """The exact import specifiers that exist. Without this the model infers file
+    names from the `*.fixture` convention and invents `../page-objects/cart.page`
+    (a ~20% first-attempt failure rate that cost a retry call each time)."""
+    po = "\n".join(
+        f"import {{ {name} }} from '../page-objects/{name}';" for name in sorted(page_objects)
+    )
+    fx = ", ".join(f"'../fixtures/{f}'" for f in fixtures if f != "env")
+    return (
+        "Importable modules (use these exact paths; page-object files are named exactly like "
+        f"their class, with no `.page` suffix and no kebab-case):\n{po}\nFixtures: {fx}"
+    )
+
+
 def strip_code_fences(code: str) -> str:
     """The model sometimes wraps the file in a markdown fence (especially on the
     corrective retry) despite the instruction; a fence is a syntax error that
@@ -194,14 +208,14 @@ async def generate_test_file(
     registry_json = json.dumps(registry.to_dict(), indent=2)
     card_json = json.dumps(test_card, indent=2)
 
+    page_objects = set(registry.pages)
+    fixtures = available_fixtures()
     prompt = (
         f"Test card:\n{card_json}\n\n"
         f"Page-object registry (verified locators only):\n{registry_json}\n\n"
+        f"{import_menu(page_objects, fixtures)}\n\n"
         f"Generate the test file."
     )
-
-    page_objects = set(registry.pages)
-    fixtures = available_fixtures()
     messages = [{"role": "user", "content": prompt}]
     for attempt in (1, 2):
         code = await complete(

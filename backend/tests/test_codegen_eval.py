@@ -63,3 +63,12 @@ def test_strip_code_fences():
     assert strip_code_fences(f"```typescript\n{body}\n```") == body
     assert strip_code_fences(f"```\n{body}\n```\n") == body
     assert strip_code_fences(body) == body  # unfenced text is untouched
+
+
+def test_import_menu_lists_exact_specifiers():
+    from backend.src.agents.generator.codegen import import_menu
+
+    menu = import_menu({"CartPage", "LoginPage"}, ["authenticated-cart.fixture", "env"])
+    assert "import { CartPage } from '../page-objects/CartPage';" in menu
+    assert "'../fixtures/authenticated-cart.fixture'" in menu
+    assert "../fixtures/env" not in menu
