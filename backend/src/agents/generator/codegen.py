@@ -1,6 +1,7 @@
 """Generator Phase 2: TypeScript Playwright test generation with verified locators."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -176,6 +177,45 @@ Rules:
 Respond with the raw TypeScript file content only — no markdown fences."""
 
 
+_SCAFFOLD_DIR = Path(_SCAFFOLD_FIXTURES_DIR).resolve().parent
+
+
+def typecheck_generated(code: str) -> list[str]:
+    """Compile errors in the generated file (undefined names, wrong member types...).
+
+    A typo such as `attempe` is a TypeScript error but, unchecked, only surfaces as
+    a red test. Only errors located in the generated file count: the scaffold's own
+    fixtures may not type-check in every environment (e.g. no @types/node). If tsc
+    is not installed the check is skipped, never failed."""
+    import subprocess
+    import uuid
+
+    tsc = _SCAFFOLD_DIR / "node_modules" / ".bin" / ("tsc.CMD" if os.name == "nt" else "tsc")
+    if not tsc.exists():
+        return []
+    # one directory below the scaffold root, the same depth as tests/, so `../fixtures/x` resolves
+    work = _SCAFFOLD_DIR / ".typecheck"
+    work.mkdir(exist_ok=True)
+    name = f"gen-{uuid.uuid4().hex[:8]}.ts"
+    path = work / name
+    path.write_text(code, encoding="utf-8")
+    try:
+        proc = subprocess.run(  # noqa: S603 - fixed argv, our own temp file
+            [str(tsc), "--noEmit", "--strict", "--target", "es2022", "--module", "esnext",
+             "--moduleResolution", "bundler", "--skipLibCheck", str(path)],
+            cwd=_SCAFFOLD_DIR, capture_output=True, text=True, timeout=120, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    finally:
+        path.unlink(missing_ok=True)
+    errors = []
+    for line in (proc.stdout or "").splitlines():
+        if line.replace("\\", "/").startswith(f".typecheck/{name}("):
+            errors.append(line.split("): ", 1)[-1][:200])
+    return errors[:8]
+
+
 def import_menu(page_objects: set[str], fixtures: list[str]) -> str:
     """The exact import specifiers that exist. Without this the model infers file
     names from the `*.fixture` convention and invents `../page-objects/cart.page`
@@ -230,26 +270,36 @@ async def generate_test_file(
         bad = unresolved_imports(code, page_objects, fixtures) + unresolved_page_object_members(
             code, registry
         )
-        if not bad:
+        # compile only once the names resolve (otherwise tsc just repeats the same complaint)
+        type_errors = [] if bad else await asyncio.to_thread(typecheck_generated, code)
+        if not bad and not type_errors:
             break
-        log.warning("codegen.unresolved_imports", test_id=test_card.get("test_id"), imports=bad, attempt=attempt)
+        log.warning(
+            "codegen.unresolved_imports", test_id=test_card.get("test_id"), imports=bad,
+            type_errors=type_errors, attempt=attempt,
+        )
         if attempt == 2:
             raise UnsafeGeneratedCodeError(
-                f"Generated code for {test_card.get('test_id', 'unknown')} uses imports "
-                f"or page-object members that do not exist: {', '.join(bad)}"
+                f"Generated code for {test_card.get('test_id', 'unknown')} is invalid: "
+                + (f"imports or page-object members that do not exist: {', '.join(bad)}" if bad
+                   else f"TypeScript errors: {'; '.join(type_errors)}")
+            )
+        if bad:
+            feedback = (
+                f"These imports or page-object members do not exist: {', '.join(bad)}. "
+                f"Page objects you may import "
+                f"(from '../page-objects/<Name>'): {', '.join(sorted(page_objects))}. "
+                f"Fixtures (from '../fixtures/<name>'): {', '.join(fixtures)}. "
+                "Return the corrected file only."
+            )
+        else:
+            feedback = (
+                "The file does not compile:\n" + "\n".join(type_errors)
+                + "\nFix these errors and return the corrected file only."
             )
         messages = messages + [
             {"role": "assistant", "content": code},
-            {
-                "role": "user",
-                "content": (
-                    f"These imports or page-object members do not exist: {', '.join(bad)}. "
-                    f"Page objects you may import "
-                    f"(from '../page-objects/<Name>'): {', '.join(sorted(page_objects))}. "
-                    f"Fixtures (from '../fixtures/<name>'): {', '.join(fixtures)}. "
-                    "Return the corrected file only."
-                ),
-            },
+            {"role": "user", "content": feedback},
         ]
 
     # Prepend mandatory metadata header

@@ -72,3 +72,20 @@ def test_import_menu_lists_exact_specifiers():
     assert "import { CartPage } from '../page-objects/CartPage';" in menu
     assert "'../fixtures/authenticated-cart.fixture'" in menu
     assert "../fixtures/env" not in menu
+
+
+def test_typecheck_catches_undefined_names_and_passes_good_code():
+    import pytest
+
+    from backend.src.agents.generator import codegen
+
+    if not (codegen._SCAFFOLD_DIR / "node_modules" / ".bin").exists():
+        pytest.skip("test-scaffold dependencies are not installed")
+    good = (
+        "import { test, expect } from '../fixtures/authenticated-cart.fixture';\n"
+        "import { CartPage } from '../page-objects/CartPage';\n"
+        "test('x', async ({ page }) => { const cart = new CartPage(page); let attempt = 1; expect(attempt).toBe(1); });\n"
+    )
+    assert codegen.typecheck_generated(good) == []
+    errors = codegen.typecheck_generated(good.replace("expect(attempt)", "expect(attempe)"))
+    assert errors and "attempe" in errors[0]

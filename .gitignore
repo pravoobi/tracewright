@@ -66,3 +66,4 @@ backend/evals/results/codegen-latest.json
 backend/evals/results/specs-latest/
 backend/evals/results/classification-latest.json
 backend/evals/results/planner-latest.json
+test-scaffold/.typecheck/
