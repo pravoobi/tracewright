@@ -45,7 +45,42 @@ env:
   HF_HUB_DISABLE_SYMLINKS: "1"
 
 jobs:
+  # Each eval calls the LLM (the 16-card codegen eval is ~35c a run), so run only the
+  # evals whose inputs changed. workflow_dispatch and edits to this file run all three.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      classification: ${{ steps.diff.outputs.classification }}
+      planner: ${{ steps.diff.outputs.planner }}
+      codegen: ${{ steps.diff.outputs.codegen }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide which evals are affected
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_PR: ${{ github.event.pull_request.base.sha }}
+          BASE_PUSH: ${{ github.event.before }}
+        run: |
+          BASE="$BASE_PR"; [ "$EVENT" = "push" ] && BASE="$BASE_PUSH"
+          if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            FILES="ALL"
+          else
+            FILES=$(git diff --name-only "$BASE" "$GITHUB_SHA")
+          fi
+          echo "changed files: $FILES"
+          hit() { [ "$FILES" = "ALL" ] || echo "$FILES" | grep -Eq "$1" && echo true || echo false; }
+          COMMON='^(\.github/workflows/evals\.yml|backend/src/llm/|backend/src/config\.py)'
+          echo "classification=$(hit "$COMMON|^backend/src/ingestion/|^backend/evals/(run_evals\.py|classification_metrics\.py|golden/labels)")" >> "$GITHUB_OUTPUT"
+          echo "planner=$(hit "$COMMON|^backend/src/agents/(planner\.py|prompts/)|^backend/evals/(planner_|run_planner_eval\.py|golden/(labels|checkout-bugs))")" >> "$GITHUB_OUTPUT"
+          echo "codegen=$(hit "$COMMON|^backend/src/agents/generator/|^backend/evals/(run_codegen_eval\.py|golden/(codegen_cards|app_model_registry))|^(demo-app|test-scaffold)/")" >> "$GITHUB_OUTPUT"
+
   classification:
+    needs: changes
+    if: needs.changes.outputs.classification == 'true' || needs.changes.outputs.planner == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -98,11 +133,11 @@ jobs:
           uv run --frozen python scripts/seed-dev-db.py
 
       - name: Classification eval
-        if: steps.key.outputs.present == 'true'
+        if: steps.key.outputs.present == 'true' && needs.changes.outputs.classification == 'true'
         run: uv run --frozen python -m backend.evals.run_evals --classification-only
 
       - name: Planner eval
-        if: steps.key.outputs.present == 'true'
+        if: steps.key.outputs.present == 'true' && needs.changes.outputs.planner == 'true'
         run: uv run --frozen python -m backend.evals.run_planner_eval
 
       - name: Upload eval results
@@ -117,6 +152,8 @@ jobs:
           retention-days: 14
 
   codegen:
+    needs: changes
+    if: needs.changes.outputs.codegen == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
