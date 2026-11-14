@@ -32,8 +32,8 @@ LABEL_FILES = (GOLDEN_DIR / "labels.json", GOLDEN_DIR / "labels_hard.json")
 RESULTS_DIR = Path(__file__).parent / "results"
 # Gates. Overall accuracy was 100% on the original 50; the harder set is where
 # regressions will show, so it also gates the auto-approved error rate.
-MIN_ACCURACY = 0.88
-MAX_AUTO_APPROVED_ERROR_RATE = 0.10
+MIN_ACCURACY = 0.92
+MAX_AUTO_APPROVED_ERROR_RATE = 0.07
 CLASSIFY_CONCURRENCY = 8
 DEV_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 

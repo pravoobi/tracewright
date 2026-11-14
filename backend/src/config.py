@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     # Confidence thresholds
     confidence_auto_approve_threshold: float = Field(default=0.85)
+    # The classifier's self-reported confidence is overconfident (wrong answers at
+    # 0.92-0.95), so the classification is sampled this many times and the
+    # agreement between samples scales the confidence (see ingestion/classify.py).
+    # 1 = single call (self-reported confidence only).
+    classifier_samples: int = Field(default=3, ge=1, le=9)
 
     # Upload endpoint had no size limit at all -- an unauthenticated-in-effect
     # (pre-finding-#1) or even authenticated caller could upload arbitrarily

@@ -57,3 +57,19 @@ def test_golden_label_files_are_well_formed():
     # every class has real support, so per-class recall is meaningful
     for c in CLASSES:
         assert sum(1 for h in hard if h["expected_type"] == c) >= 5, c
+
+
+def test_aggregate_votes_scales_confidence_by_agreement():
+    from backend.src.ingestion.classify import aggregate_votes
+
+    unanimous = aggregate_votes([("business_rule", 0.9, None)] * 3)
+    assert unanimous == ("business_rule", 0.9, None)
+
+    split = aggregate_votes([("example", 0.9, "r"), ("acceptance_criterion", 0.9, None), ("example", 0.9, None)])
+    assert split[0] == "example" and split[1] == 0.6 and split[2] == "r"  # 2/3 agreement < 0.85 threshold
+
+    # a three-way disagreement is never auto-approved, ties go to the more confident label
+    three = aggregate_votes([("example", 0.8, None), ("business_rule", 0.95, None), ("metadata", 0.7, None)])
+    assert three[0] == "business_rule" and three[1] < 0.4
+
+    assert aggregate_votes([]) == ("unknown", 0.3, None)
